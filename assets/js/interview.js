@@ -1,20 +1,5 @@
-/* ============================================================
-   AI面接官 — 面接フロー・評価エンジン・回答ログ保存
-   ============================================================ */
+// デモの規則ベース採点。加点の根拠は必ず所見に書く
 
-/* ============================================================
-   1. 評価エンジン
-   （回答ログの保存 Sessions は app.js 側に置いてある。
-     人事ダッシュボードからも同じ記録を読むため）
-   ============================================================ */
-
-/* ---------- デモモード：規則ベースの採点 ----------
-   APIを使わずに、その場で説明できる根拠から点をつける。
-   「AIが勘で決めている」ように見せないため、
-   何を見て加点したかを所見に必ず書き出す。
-   ------------------------------------------------ */
-
-/* 具体性の手がかり（数字・期間・固有の行動） */
 const RE_NUMBER = /[0-9０-９]+\s*(%|％|人|名|件|社|倍|円|万|時間|日|週|ヶ月|か月|カ月|年|位|点|回)/;
 const WORDS_TEAM = ['チーム', '相談', '共有', '協力', '連携', 'レビュー', '相手', '一緒', 'メンバー', '周り', '支え', '聞く', '伝え'];
 const WORDS_LEARN = ['学', '身につけ', '挑戦', '改善', '成長', 'キャッチアップ', '勉強', '習得', '吸収'];
@@ -37,10 +22,8 @@ function evaluateByRules(answers) {
   const totalLen = all.replace(/\s/g, '').length;
   const notes = [];
 
-  /* --- 志望動機の具体性 --- */
   const motivationText = answersFor(answers, 'motivation');
   const mLen = motivationText.replace(/\s/g, '').length;
-  // 会社の実情に触れているか（ナレッジのキーワードと突き合わせる）
   const companyRefs = Content.knowledge
     .flatMap((e) => e.keywords)
     .filter((kw) => kw.length >= 2 && motivationText.includes(kw)).length;
@@ -48,7 +31,6 @@ function evaluateByRules(answers) {
   if (companyRefs > 0) notes.push(`志望動機で当社の事業・制度に${companyRefs}箇所ふれている`);
   else notes.push('志望動機が一般論にとどまり、当社ならではの理由が読み取りにくい');
 
-  /* --- 経験の裏付け --- */
   const expText = answersFor(answers, 'experience');
   const eLen = expText.replace(/\s/g, '').length;
   const hasNumber = RE_NUMBER.test(expText);
@@ -58,8 +40,7 @@ function evaluateByRules(answers) {
     ? '取り組みの結果が数字で語られている'
     : '取り組みは語られているが、結果が数値で示されていない');
 
-  /* --- コミュニケーション --- */
-  // 質問数に対して回答が過不足なく返っているか、を長さのばらつきで見る
+  // 回答の長さのばらつきで見る
   const lens = answers.map((a) => a.text.replace(/\s/g, '').length);
   const avg = lens.reduce((s, n) => s + n, 0) / (lens.length || 1);
   const tooShort = lens.filter((n) => n < 25).length;
@@ -67,14 +48,13 @@ function evaluateByRules(answers) {
   let communication = 1 + Math.min(2.4, avg / 110) + (polite ? 1 : 0) - tooShort * 0.6;
   if (tooShort > 0) notes.push(`${tooShort}問で回答が極端に短く、意図が読み取りにくい`);
 
-  /* --- カルチャーフィット --- */
   const cultureText = answersFor(answers, 'culture');
   const teamHits = countHits(cultureText || all, WORDS_TEAM);
   const learnHits = countHits(all, WORDS_LEARN);
   let culture = 1 + Math.min(2.2, teamHits * 0.7) + Math.min(1.6, learnHits * 0.6);
   if (teamHits >= 2) notes.push('チームでの関わり方が具体的な場面とともに語られている');
 
-  // 全体が極端に短い場合は、どの軸も高く出ないよう抑える
+  // 全体が極端に短ければ全軸を抑える
   if (totalLen < 120) {
     motivation -= 1; experience -= 1; communication -= 1; culture -= 1;
     notes.push('回答全体の情報量が少なく、判断材料が不足している');
@@ -99,9 +79,7 @@ function evaluateByRules(answers) {
   return { scores, total, comment };
 }
 
-/* ---------- ライブモード：Claude による評価 ----------
-   評価の指示・スコアの検証はサーバー側（api/interview.js）が行う。
-   評価基準をブラウザに置くと候補者から読めてしまうため、サーバーに寄せている。 */
+// 評価基準はサーバー側（ブラウザに置くと候補者に読まれる）
 async function evaluateByClaude(answers) {
   const payload = answers.map((a) => ({ question: a.question, text: a.text }));
   const { scores, total, comment } = await callApi('interview', {
@@ -112,7 +90,6 @@ async function evaluateByClaude(answers) {
   return { scores, total, comment };
 }
 
-/* ---------- 深掘り質問 ---------- */
 async function followUpQuestion(answers) {
   const target = answers.find((a) => a.id === 'q3') || answers[answers.length - 1];
   const body = String(target?.text || '').trim();
@@ -125,27 +102,23 @@ async function followUpQuestion(answers) {
       });
       if (question) return question;
     } catch (_) {
-      /* 失敗しても面接は止めない。下の定型の質問に落とす。 */
+      // 失敗時は下の定型質問へ
     }
   }
 
-  // デモモード／失敗時：回答の傾向に合わせた定型の深掘り
   if (!RE_NUMBER.test(body)) {
     return 'ありがとうございます。もう少しだけ伺わせてください。その取り組みの結果は、数字で表すとどの程度の変化がありましたか。';
   }
   return 'ありがとうございます。もう少しだけ伺わせてください。その取り組みの中で、最も難しかったのはどの部分でしたか。';
 }
 
-/* ============================================================
-   2. 画面制御
-   ============================================================ */
 const Interview = (() => {
   const screens = {};
   let candidate = null;
   let token = '';
 
   const answers = [];      // {id, axis, question, text, seconds}
-  let queue = [];          // 出題予定
+  let queue = [];
   let index = 0;
   let startedAt = null;
   let questionStartedAt = null;
@@ -158,9 +131,7 @@ const Interview = (() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  /* ---------- 入口 ----------
-     サーバーに候補者管理がある場合はそちらを正とする（期限・使い切りの判定込み）。
-     無い場合はデモとして、コード内の CANDIDATES を使う。 */
+  // サーバーに候補者管理があればそちらが正。無ければデモ用の CANDIDATES
   async function resolveCandidate() {
     token = new URLSearchParams(location.search).get('token') || '';
     if (!token) return null;
@@ -181,7 +152,6 @@ const Interview = (() => {
     return candidate;
   }
 
-  /* 期限切れ・受験済み・無効化のときの案内文 */
   const STATUS_MESSAGE = {
     done: {
       title: 'この面接は受付済みです',
@@ -201,7 +171,6 @@ const Interview = (() => {
   function paintInvalid(status) {
     const msg = STATUS_MESSAGE[status];
     if (msg) {
-      // 期限切れ・受験済みは「間違い」ではないので、案内の文面を変える
       $('invalidTitle').textContent = msg.title;
       $('invalidBody').textContent = msg.body;
       $('invalidBadge').textContent = status === 'done' ? '受付済み' : '無効なURL';
@@ -211,7 +180,6 @@ const Interview = (() => {
       return;
     }
 
-    // デモ運用のときだけ、試せるURLを案内する
     if (!Sessions.remote) {
       $('tokenList').innerHTML = Object.entries(CANDIDATES)
         .map(([t, c]) => `<li><a href="interview.html?token=${encodeURIComponent(t)}">${escapeHtml(c.name)}（${escapeHtml(c.role)}）</a></li>`)
@@ -223,7 +191,6 @@ const Interview = (() => {
     show('invalid');
   }
 
-  /* ---------- 質問 ---------- */
   function paintQuestion() {
     const q = queue[index];
     const total = queue.length;
@@ -239,13 +206,12 @@ const Interview = (() => {
     $('answerCount').textContent = '0 文字';
     $('nextBtn').textContent = index === total - 1 ? '回答を送信して終了する' : '次の質問へ';
 
-    // 回答例が用意されている設問だけ、補助ボタンを出す
     $('sampleBtn').hidden = !SAMPLE_ANSWERS[q.id];
 
     questionStartedAt = Date.now();
   }
 
-  /* デモ限定の補助。ボタン1つで例文を入れ、最後まで流れを見てもらう */
+  // デモ限定
   function fillSample() {
     const q = queue[index];
     const sample = SAMPLE_ANSWERS[q.id];
@@ -272,8 +238,7 @@ const Interview = (() => {
       seconds: Math.round((Date.now() - questionStartedAt) / 1000),
     });
 
-    // 共通質問を終えた時点で、最後の1問（深掘り）の内容を確定させる。
-    // 枠は最初から queue に入れてあるので、質問数の表示はぶれない。
+    // 深掘りの枠は最初から queue にあるので質問数の表示はぶれない
     if (!followUpUsed && index === Content.questions.length - 1) {
       followUpUsed = true;
       $('nextBtn').disabled = true;
@@ -290,7 +255,6 @@ const Interview = (() => {
     }
   }
 
-  /* ---------- 評価と保存 ---------- */
   async function finish() {
     show('analyzing');
 
@@ -301,7 +265,7 @@ const Interview = (() => {
         ? await evaluateByClaude(answers)
         : evaluateByRules(answers);
     } catch (err) {
-      // ライブ評価に失敗しても面接は完了させる。規則ベースに落として記録を残す。
+      // 失敗しても規則ベースで記録を残す
       result = evaluateByRules(answers);
       result.comment = `（AIによる評価に失敗したため、規則ベースの暫定評価です: ${err.message}）\n\n${result.comment}`;
       usedMode = 'demo';
@@ -320,7 +284,7 @@ const Interview = (() => {
       scores: result.scores,
       total: result.total,
       comment: result.comment,
-      // 合否は人が決める。AIは null のまま引き渡す。
+      // 合否は人が決める
       humanDecision: null,
       humanMemo: '',
     });
@@ -331,7 +295,6 @@ const Interview = (() => {
     show('done');
   }
 
-  /* ---------- 音声入力（対応ブラウザのみ） ---------- */
   function setupVoice() {
     const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
     const btn = $('voiceBtn');
@@ -369,9 +332,7 @@ const Interview = (() => {
     });
   }
 
-  /* ---------- 個人情報の開示文 ----------
-     実際の設定（保存先・AI利用の有無・保存期間）を読み、
-     書いてあることと起きることを一致させる。 */
+  // 開示文は実際の設定（保存先・AI利用・保存期間）から作る
   async function paintConsent() {
     try {
       const res = await fetch(`${CONFIG.API_BASE}/privacy`, { cache: 'no-store' });
@@ -393,7 +354,7 @@ const Interview = (() => {
         ? `ご回答の内容は、評価の作成のため ${info.aiProvider} へ送信され、分析されます。`
         : 'このページはデモのため、ご回答が外部のAIサービスへ送信されることはありません。';
     } catch (_) {
-      // 取得できない場合はデモとみなす（実際、サーバーが無い状態）
+      // 取れなければデモ扱い
       $('consentRetention').textContent =
         'このページはデモです。ご入力の内容は、ご覧の端末内にのみ保存されます。';
       $('consentAi').textContent =
@@ -401,19 +362,17 @@ const Interview = (() => {
     }
   }
 
-  /* ---------- 初期化 ---------- */
   async function init() {
     ['invalid', 'intro', 'question', 'analyzing', 'done'].forEach((k) => {
       screens[k] = document.getElementById(`screen-${k}`);
     });
 
-    await Mode.ready();      // 候補者の管理がサーバー側かどうか
-    await Content.load();    // 人事が編集した設問・会社情報を取り込む
+    await Mode.ready();
+    await Content.load();
 
     const found = await resolveCandidate();
     if (!found) { paintInvalid(); return; }
 
-    // 期限切れ・受験済み・無効化はここで止める
     if (candidate.status && candidate.canStart === false) {
       paintInvalid(candidate.status);
       return;
@@ -423,20 +382,16 @@ const Interview = (() => {
     $('introRole').textContent = candidate.role;
     $('introCount').textContent = `${Content.questions.length + 1}問`;
 
-    // 有効期限があれば伝える（いつまでに受ければよいかが分からないと困る）
     if (candidate.expiresAt) {
       $('introExpiry').textContent = `${formatDateTime(candidate.expiresAt)} まで`;
       $('introExpiryRow').hidden = false;
     }
 
-    // 開示内容は、その環境で実際に起きることに合わせる。
-    // 「AIへ送信します」と書いておきながら送っていない（逆も）を避けるため。
     paintConsent();
 
     $('agree').addEventListener('change', (e) => { $('startBtn').disabled = !e.target.checked; });
 
     $('startBtn').addEventListener('click', async () => {
-      // サーバー管理なら受験開始を記録する（人事画面で「受験中」が見える）
       if (Sessions.remote) {
         try {
           const res = await fetch(`${CONFIG.API_BASE}/candidates`, {
@@ -450,12 +405,12 @@ const Interview = (() => {
             return;
           }
         } catch (_) {
-          // 通信できなくても面接は続行する。応募者の機会を奪わない。
+          // 通信失敗でも面接は続行
         }
       }
 
       startedAt = new Date();
-      // 共通質問＋深掘り1問ぶんの枠。深掘りの文面は5問目の回答後に埋める。
+      // 深掘りの文面は5問目の回答後に埋める
       queue = Content.questions.concat([{ id: 'follow', axis: 'communication', text: '', hint: '' }]);
       index = 0;
       show('question');

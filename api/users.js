@@ -1,12 +1,3 @@
-/* ============================================================
-   /api/users — 担当者の管理（管理者のみ）
-   ------------------------------------------------------------
-   GET            … 担当者の一覧
-   GET ?audit=1   … 操作ログ（誰がいつ何をしたか）
-   POST           … 担当者の追加（アクセスキーを発行して1回だけ返す）
-   PATCH          … 権限の変更・停止・キーの再発行
-   ============================================================ */
-
 const auth = require('./_auth.js');
 const store = require('./_store.js');
 
@@ -32,7 +23,6 @@ module.exports = async function handler(req, res) {
     const q = req.query || {};
     const body = readBody(req);
 
-    /* ---------- 操作ログ ---------- */
     if (req.method === 'GET' && q.audit) {
       const entries = await store.listAudit({ limit: 300 });
       res.status(200).json({ entries });
@@ -44,7 +34,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    /* ---------- 追加 ---------- */
     if (req.method === 'POST') {
       const email = String(body.email || '').trim().toLowerCase();
       const name = String(body.name || '').trim();
@@ -60,18 +49,17 @@ module.exports = async function handler(req, res) {
       try {
         user = await store.createUser({ email, name, role, keyHash: auth.hashKey(key), actor: me.id });
       } catch (err) {
-        // UNIQUE 制約に当たった場合
+        // email の UNIQUE 違反
         res.status(409).json({ error: 'このメールアドレスはすでに登録されています。' });
         return;
       }
       await store.audit('user.create', user.id, { email, role }, me);
 
-      // 平文のキーを返すのはこの1回だけ。保存しているのはハッシュのみ。
+      // 平文のキーを返すのはこの1回だけ
       res.status(200).json({ user, accessKey: key });
       return;
     }
 
-    /* ---------- 変更 ---------- */
     if (req.method === 'PATCH') {
       const id = String(body.id || '');
       if (!id) {
@@ -79,7 +67,7 @@ module.exports = async function handler(req, res) {
         return;
       }
 
-      // 自分自身を停止・降格できないようにする（管理者が居なくなるのを防ぐ）
+      // 自分を停止・降格させない（管理者不在を防ぐ）
       if (id === me.id && (body.disabled === true || (body.role && body.role !== 'admin'))) {
         res.status(400).json({ error: 'ご自身の権限を下げる・停止することはできません。' });
         return;

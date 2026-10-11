@@ -1,25 +1,10 @@
-/* ============================================================
-   POST /api/chat — 会社説明会ページのAI人事担当
-   ------------------------------------------------------------
-   受け取り: { messages: [{ role, content }] }
-   返す:     { text }
-
-   ナレッジは assets/js/knowledge.js を共有している。
-   ブラウザ側と同じ1つのファイルを見ているので、内容がずれない。
-   ============================================================ */
-
 const { ask, guard, fail } = require('./_claude.js');
 const content = require('./_content.js');
 
 const MAX_TURNS = 20;
 const MAX_CHARS = 2000;
 
-/* Stage 5: ナレッジと社名は人事が画面から編集できる。
-   編集されていなければ、リポジトリ内の定義がそのまま使われる。
-
-   プロンプトは同じ内容であるほどキャッシュが効くので、
-   ナレッジが変わらないかぎり同じ文字列になるよう組み立てる。
-   日時など変動する値は混ぜないこと。 */
+// キャッシュが効くよう毎回同じ文字列にする。日時など変動値は混ぜない
 function buildSystemPrompt(company, knowledge) {
   return [
   `あなたは${company.name}の採用担当AIです。会社説明会ページで、求職者からの質問に答えます。`,
@@ -47,7 +32,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  // 送られてきた履歴をそのまま信用せず、形と量を整えてから渡す
+  // クライアントの履歴は信用しない。形と量を絞る
   const safe = messages
     .slice(-MAX_TURNS)
     .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
@@ -68,7 +53,7 @@ module.exports = async function handler(req, res) {
       system: buildSystemPrompt(company, knowledge),
       messages: safe,
       maxTokens: 2048,
-      effort: 'low', // 資料を引く用途。速度を優先する
+      effort: 'low',
     });
     res.status(200).json({ text });
   } catch (err) {

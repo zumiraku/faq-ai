@@ -1,10 +1,3 @@
-/* ============================================================
-   候補者管理（人事用）— 登録とURLの発行
-   ------------------------------------------------------------
-   この画面はサーバー（データベース）がある場合のみ意味を持つ。
-   デモ運用のときは、その旨を表示して操作させない。
-   ============================================================ */
-
 const STATUS = {
   pending:     { label: '未受験',   tone: 'accent' },
   in_progress: { label: '受験中',   tone: 'warn' },
@@ -21,7 +14,6 @@ const Candidates = (() => {
     return `${location.origin}/interview?token=${encodeURIComponent(token)}`;
   }
 
-  /* 案内メールの文面。人事がそのまま使えるように、URLと期限を差し込む。 */
   function inviteText(c) {
     const until = c.expiresAt ? formatDateTime(c.expiresAt) : '';
     return [
@@ -51,12 +43,12 @@ const Candidates = (() => {
     try {
       await navigator.clipboard.writeText(text);
     } catch (_) {
-      // クリップボードが使えない環境向けの手段
+      // Clipboard API が使えない環境向け
       const ta = document.createElement('textarea');
       ta.value = text;
       document.body.appendChild(ta);
       ta.select();
-      try { document.execCommand('copy'); } catch (__) { /* 諦める */ }
+      try { document.execCommand('copy'); } catch (__) { /* 無視 */ }
       ta.remove();
     }
     if (btn) {
@@ -66,7 +58,6 @@ const Candidates = (() => {
     }
   }
 
-  /* ---------- 描画 ---------- */
   function paint() {
     $('count').textContent = `${rows.length}名`;
 
@@ -117,7 +108,6 @@ const Candidates = (() => {
     }).join('');
   }
 
-  /* ---------- 読み込み ---------- */
   async function load() {
     const res = await fetch(`${CONFIG.API_BASE}/candidates`, {
       cache: 'no-store',
@@ -140,7 +130,6 @@ const Candidates = (() => {
     return res.json();
   }
 
-  /* ---------- 操作 ---------- */
   async function create(e) {
     e.preventDefault();
     const btn = $('createBtn');
@@ -158,7 +147,6 @@ const Candidates = (() => {
       $('fDays').value = 14;
       await load();
       paint();
-      // 発行直後はURLをすぐ渡したいので、その場でコピーしておく
       await copy(interviewUrl(candidate.token), null);
       $('createdNote').textContent = `${candidate.name} さんのURLを発行し、クリップボードにコピーしました。`;
       $('createdNote').hidden = false;
@@ -191,8 +179,8 @@ const Candidates = (() => {
       const subject = encodeURIComponent('【一次選考】オンライン面接のご案内');
       const bodyText = encodeURIComponent(inviteText(c));
       window.location.href = `mailto:${encodeURIComponent(c.email)}?subject=${subject}&body=${bodyText}`;
-      // メーラーを開いたら「案内送信済み」にしておく
-      try { await send('PATCH', { token: c.token, invited: true }); await load(); paint(); } catch (_) { /* 表示だけの話 */ }
+      // メーラーを開いた時点で送信済み扱い
+      try { await send('PATCH', { token: c.token, invited: true }); await load(); paint(); } catch (_) { /* 表示だけ */ }
       return;
     }
 
@@ -220,7 +208,6 @@ const Candidates = (() => {
     }
   }
 
-  /* ---------- 初期化 ---------- */
   async function init() {
     await Mode.ready();
 
@@ -241,7 +228,6 @@ const Candidates = (() => {
 
     paint();
 
-    // 閲覧のみの担当者は、候補者の登録・招待ができない
     if (!Auth.can('reviewer')) {
       $('createForm').hidden = true;
       $('createLocked').hidden = false;

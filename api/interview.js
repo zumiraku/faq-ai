@@ -1,13 +1,4 @@
-/* ============================================================
-   POST /api/interview — AI面接官の評価と深掘り質問
-   ------------------------------------------------------------
-   受け取り: { action: 'evaluate' | 'followup', answers: [...] }
-   返す:     evaluate → { scores, total, comment }
-            followup → { question }
-
-   ここは人の選考に関わるため、evaluate は effort を上げている。
-   ただし返すのはスコアと所見まで。合否はサーバー側でも決めない。
-   ============================================================ */
+// 返すのはスコアと所見まで。合否はサーバーでも決めない
 
 const { ask, guard, fail } = require('./_claude.js');
 const content = require('./_content.js');
@@ -15,11 +6,9 @@ const content = require('./_content.js');
 const MAX_ANSWERS = 12;
 const MAX_CHARS = 4000;
 
-/* 編集されていない場合に使う評価軸 */
 const DEFAULT_AXES = require('../assets/js/interview-data.js').AXES;
 
-/* Stage 5: 社名と評価軸の表記は人事が編集できる。
-   軸のキー（motivation など）は記録と結びつくため変更しない。 */
+// 軸の key は記録と紐づくので変えない（表記だけ編集可）
 function buildEvalSystem(company, axes) {
   const sample = axes.reduce((o, a) => ({ ...o, [a.key]: 3 }), {});
   return [
@@ -82,7 +71,6 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    /* ---------- 深掘り質問 ---------- */
     if (body.action === 'followup') {
       const target = answers[answers.length - 1];
       const text = await ask({
@@ -95,7 +83,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    /* ---------- 評価 ---------- */
     const transcript = answers
       .map((a, i) => `【質問${i + 1}】${a.question}\n【回答】${a.text || '（無回答）'}`)
       .join('\n\n');
@@ -109,7 +96,7 @@ module.exports = async function handler(req, res) {
       system: buildEvalSystem(company, axes),
       messages: [{ role: 'user', content: transcript }],
       maxTokens: 4096,
-      effort: 'high', // 人の選考に関わる判断なので、速度より精度を優先する
+      effort: 'high', // 選考に関わるので精度優先
     });
 
     const parsed = extractJson(text);

@@ -1,14 +1,4 @@
-/* ============================================================
-   /api/insights — 運用の振り返り
-   ------------------------------------------------------------
-   POST {action:'miss', question} … 答えられなかった質問の記録（公開）
-   GET                            … 集計とナレッジ候補（担当者）
-   PATCH {ids, status}            … 候補の処理済み・除外（担当者）
-
-   記録の POST が公開なのは、会社説明会ページが
-   誰でも見られる場所にあるため。記録するのは質問文のみで、
-   誰が入力したかは一切残さない。
-   ============================================================ */
+// miss の POST は公開。残すのは質問文だけで入力者は記録しない
 
 const insights = require('./_insights.js');
 const content = require('./_content.js');
@@ -33,19 +23,18 @@ module.exports = async function handler(req, res) {
   try {
     const body = readBody(req);
 
-    /* ---------- 答えられなかった質問を記録（公開） ---------- */
     if (req.method === 'POST' && body.action === 'miss') {
       await insights.recordMiss({
         question: body.question,
         bestScore: body.bestScore,
         bestId: body.bestId,
       });
-      // 記録できたかどうかは閲覧者に関係ない。常に成功として返す。
+      // 閲覧者には常に成功を返す
       res.status(200).json({ ok: true });
       return;
     }
 
-    /* ---------- ここから担当者のみ ---------- */
+    // ここから担当者のみ
     const me = await auth.requireRole(req, res, 'viewer');
     if (!me) return;
 

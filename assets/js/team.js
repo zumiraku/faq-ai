@@ -1,7 +1,3 @@
-/* ============================================================
-   担当者管理（管理者のみ）— 追加・権限変更・停止・操作ログ
-   ============================================================ */
-
 const ROLES = {
   viewer:   { label: '閲覧のみ', desc: '記録を読めます。合否は押せません。' },
   reviewer: { label: '選考担当', desc: '合否とメモを記録できます。候補者も登録できます。' },
@@ -24,7 +20,7 @@ const Team = (() => {
     return data;
   }
 
-  /* アクセスキーは発行時の1回しか表示できない（保存はハッシュのみ） */
+  // キーは発行時の1回しか表示できない（保存はハッシュのみ）
   function showKey(user, key) {
     $('keyBox').hidden = false;
     $('keyFor').textContent = `${user.name}（${user.email}）`;
@@ -123,7 +119,6 @@ const Team = (() => {
     }
   }
 
-  /* 操作ログ：誰がいつ何をしたか */
   async function loadAudit() {
     try {
       const { entries } = await api('GET', null, '?audit=1');

@@ -1,17 +1,4 @@
-/* ============================================================
-   /api/privacy — 保存方針の開示と、削除請求の受付
-   ------------------------------------------------------------
-   GET                      … 保存期間などの開示（誰でも可・個人情報は含まない）
-   POST {action:'request'}  … 応募者からの削除請求（鍵不要）
-   GET  ?requests=1         … 削除請求の一覧（人事・鍵必要）
-   PATCH                    … 請求への対応（人事・鍵必要）
-   DELETE ?token= / ?id=    … データの完全削除（人事・鍵必要）
-
-   応募者が自分のデータの削除を求める窓口は、
-   鍵を持たない人からも届く必要がある。だから POST は鍵不要。
-   ただし届くのは「依頼」であって、削除そのものは人事が行う。
-   （本人確認をせずに削除を実行すると、第三者が他人のデータを消せてしまう）
-   ============================================================ */
+// 削除請求の POST は鍵不要だが受付のみ。本人確認なしで消すと他人が消せてしまうので、削除は人事が行う
 
 const auth = require('./_auth.js');
 const store = require('./_store.js');
@@ -31,7 +18,7 @@ module.exports = async function handler(req, res) {
   const q = req.query || {};
   const body = readBody(req);
 
-  /* ---------- 開示（誰でも見られる。個人情報は含まない） ---------- */
+  // 開示は公開。個人情報は含めない
   if (req.method === 'GET' && !q.requests) {
     const policy = store.isEnabled()
       ? store.retentionPolicy()
@@ -40,7 +27,6 @@ module.exports = async function handler(req, res) {
     res.status(200).json({
       storage: store.isEnabled() ? 'db' : 'local',
       retentionDays: policy,
-      // ライブモードでのみ回答が外部のAIサービスへ送られる
       aiProvider: process.env.ANTHROPIC_API_KEY ? 'Anthropic (Claude)' : null,
       contact: process.env.PRIVACY_CONTACT || '',
     });
@@ -53,7 +39,6 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    /* ---------- 応募者からの削除請求 ---------- */
     if (req.method === 'POST' && body.action === 'request') {
       const name = String(body.name || '').trim().slice(0, 200);
       const email = String(body.email || '').trim().slice(0, 200);
@@ -71,7 +56,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    /* ---------- ここから人事のみ ---------- */
+    // ここから人事のみ
 
     if (req.method === 'GET' && q.requests) {
       const me = await auth.requireRole(req, res, 'viewer');
@@ -96,8 +81,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    /* ---------- 完全削除 ----------
-       取り消せない操作なので admin に限定する。 */
+    // 取り消せないので admin のみ
     if (req.method === 'DELETE') {
       const me = await auth.requireRole(req, res, 'admin');
       if (!me) return;

@@ -75,7 +75,6 @@
     <p>候補者を登録すると、その方専用の面接URLが発行されます。</p>
   </div>
 
-  <!-- データベース未接続のとき -->
   <div class="card card__pad stack" id="needsDb" hidden style="max-width:620px">
     <span class="badge badge--warn">データベース未接続</span>
     <h2 style="font-size:17px">この画面はデモでは使用できません</h2>
@@ -92,7 +91,6 @@
 
   <div class="layout" id="main">
 
-    <!-- ============ 登録 ============ -->
     <form class="card card__pad" id="createForm">
       <h2 style="font-size:15px;margin-bottom:14px">候補者を登録する</h2>
 
@@ -136,7 +134,6 @@
       </div>
     </form>
 
-    <!-- 権限が足りない場合 -->
     <div class="card card__pad" id="createLocked" hidden>
       <span class="badge">閲覧のみ</span>
       <p class="muted" style="margin:10px 0 0;font-size:13.5px">
@@ -144,7 +141,6 @@
       </p>
     </div>
 
-    <!-- ============ 一覧 ============ -->
     <div class="card">
       <div class="list-head">
         候補者一覧<span class="site-header__spacer"></span><span id="count">—</span>

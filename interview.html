@@ -16,7 +16,6 @@
 
   .panel h1 { font-size: clamp(19px, 3.4vw, 24px); }
 
-  /* 候補者情報 */
   .who {
     display: flex; align-items: center; gap: 13px;
     padding: 14px 16px; border-radius: var(--radius); background: var(--surface-2);
@@ -29,7 +28,6 @@
   .who__name { font-weight: 700; font-size: 15px; }
   .who__role { font-size: 12.5px; color: var(--text-muted); }
 
-  /* 事前説明のリスト */
   .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; background: var(--border-soft); border-radius: var(--radius); overflow: hidden; }
   .facts li { display: flex; gap: 12px; padding: 11px 14px; background: var(--surface); font-size: 13.5px; }
   .facts dt, .facts b { flex: none; width: 7.5em; color: var(--text-muted); font-weight: 700; }
@@ -37,7 +35,6 @@
   .agree-row { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; cursor: pointer; }
   .agree-row input { margin-top: 5px; flex: none; }
 
-  /* 進捗 */
   .prog { height: 4px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin-bottom: 18px; }
   .prog i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
 
@@ -49,7 +46,6 @@
   .answer-tools .count { margin-left: auto; font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
   #voiceBtn.is-recording { background: var(--danger); color: #fff; border-color: transparent; }
 
-  /* 解析中 */
   .spin {
     width: 34px; height: 34px; border-radius: 50%; margin: 0 auto;
     border: 3px solid var(--surface-2); border-top-color: var(--accent);
@@ -57,7 +53,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* 完了 */
   .done-mark {
     width: 56px; height: 56px; border-radius: 50%; margin: 0 auto;
     background: var(--ok-soft); color: var(--ok);
@@ -110,7 +105,6 @@
     </div>
 
 
-    <!-- ============ 無効なURL ============ -->
     <section class="card panel stack" id="screen-invalid" hidden>
       <span class="badge badge--danger" id="invalidBadge">URLが正しくありません</span>
       <h1 id="invalidTitle">面接用URLをご確認ください</h1>
@@ -124,7 +118,6 @@
       </div>
     </section>
 
-    <!-- ============ 開始前 ============ -->
     <section class="card panel stack" id="screen-intro" hidden>
       <span class="badge badge--accent">オンライン面接のご案内</span>
       <h1>AI面接官による一次面接</h1>
@@ -153,7 +146,7 @@
         結果は後日、あらためてご連絡いたします。
       </div>
 
-      <!-- 個人情報の取り扱い。何が起きるかを、同意の前に具体的に示す -->
+      <!-- 同意の前に何が起きるかを具体的に示す -->
       <details class="consent" id="consentBox">
         <summary>個人情報の取り扱いについて（必ずお読みください）</summary>
         <dl class="consent__list">
@@ -199,7 +192,6 @@
       <p class="hint center" style="margin:0">開始すると最初の質問が表示されます。</p>
     </section>
 
-    <!-- ============ 質問中 ============ -->
     <section class="card panel" id="screen-question" hidden>
       <div class="prog"><i id="qProgress"></i></div>
 
@@ -213,7 +205,7 @@
 
       <div class="answer-tools">
         <button class="btn btn--ghost btn--sm" id="voiceBtn" type="button">🎤 音声で入力</button>
-        <!-- デモ限定の補助。実際の面接画面には出しません -->
+        <!-- デモ限定 -->
         <button class="btn btn--ghost btn--sm" id="sampleBtn" type="button" hidden>回答例を入れる</button>
         <span class="count" id="answerCount">0 文字</span>
       </div>
@@ -224,16 +216,13 @@
       </p>
     </section>
 
-    <!-- ============ 解析中 ============ -->
     <section class="card panel stack center" id="screen-analyzing" hidden>
       <div class="spin"></div>
       <h1 style="font-size:18px">ご回答を確認しています</h1>
       <p class="muted" style="margin:0">そのまましばらくお待ちください。</p>
     </section>
 
-    <!-- ============ 完了 ============ -->
-    <!-- 設計上の要点：この画面では合否を一切表示しない。
-         AIが即座に不合格を伝える体験を避けるため、意図的にこうしている。 -->
+    <!-- 合否はここに出さない（意図的） -->
     <section class="card panel stack center" id="screen-done" hidden>
       <div class="done-mark">✓</div>
       <h1>面接は以上です。ありがとうございました</h1>

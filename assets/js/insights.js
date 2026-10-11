@@ -1,10 +1,3 @@
-/* ============================================================
-   運用の振り返り（Stage 6）
-   ------------------------------------------------------------
-   数字を出すだけでは意味がない。
-   「だから次に何をすればよいか」まで書く。
-   ============================================================ */
-
 const Insights = (() => {
   let data = { misses: [], agreement: null };
   const $ = (id) => document.getElementById(id);
@@ -23,14 +16,13 @@ const Insights = (() => {
 
   const fmt = (n) => (n === null || n === undefined ? '—' : (Math.round(n * 10) / 10).toFixed(1));
 
-  /* ---------- AIと人の判断のズレ ---------- */
   function paintAgreement() {
     const a = data.agreement;
     if (!a) return;
 
     $('decidedCount').textContent = `${a.decided}件`;
 
-    // 件数が少ないうちに数字を根拠にしないこと
+    // 件数が少ないうちは数字を根拠にしない
     if (!a.enough) {
       $('notEnough').hidden = false;
       $('notEnough').textContent =
@@ -45,7 +37,6 @@ const Insights = (() => {
     $('cntHold').textContent = `${a.counts.hold}件`;
     $('cntReject').textContent = `${a.counts.reject}件`;
 
-    /* この2つがこのシステムの効き目そのもの */
     $('rescued').textContent = `${a.rescued}名`;
     $('overrated').textContent = `${a.overrated}名`;
 
@@ -58,7 +49,6 @@ const Insights = (() => {
         + '評価の観点が実態と合っているか確認する材料になります。'
       : 'いまのところ該当はありません。';
 
-    /* 軸ごとの判別力 */
     $('axisTable').innerHTML = a.axisStats.map((s) => {
       const gap = s.gap;
       let verdict = '<span class="badge">判定できません</span>';
@@ -90,7 +80,6 @@ const Insights = (() => {
     }).join('');
   }
 
-  /* ---------- 答えられなかった質問 ---------- */
   function paintMisses() {
     $('missCount').textContent = `${data.misses.length}件`;
 
@@ -127,7 +116,6 @@ const Insights = (() => {
   async function onAction(e) {
     const add = e.target.closest('[data-add]');
     if (add) {
-      // 質問文を持ってコンテンツ編集へ。人事はそのまま回答を書けばよい。
       const q = add.dataset.q || '';
       try {
         await api('PATCH', { ids: JSON.parse(add.dataset.add), status: 'added' });

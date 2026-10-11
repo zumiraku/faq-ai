@@ -21,9 +21,7 @@
     .layout { grid-template-columns: minmax(0, 1fr); }
   }
 
-  /* ---------- 動画プレーヤー ---------- */
-  /* ★差し替えポイント★ 本番は下の .player__stage を <video> に置き換える。
-     チャプターの時刻はそのまま video.currentTime に対応させられる構造にしてある。 */
+  /* 本番は .player__stage を <video> に置き換える */
   .player__stage {
     position: relative; aspect-ratio: 16 / 9; overflow: hidden;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
@@ -91,7 +89,6 @@
   }
   .chapter-ask:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
-  /* ---------- チャット ---------- */
   .chat {
     display: flex; flex-direction: column;
     height: min(78vh, 700px);
@@ -198,7 +195,6 @@
 
   <div class="layout" style="margin-top:16px">
 
-    <!-- ============ 動画 ============ -->
     <div>
       <div class="card" style="overflow:hidden">
         <div class="player__stage">
@@ -227,7 +223,6 @@
       </div>
     </div>
 
-    <!-- ============ チャット ============ -->
     <div class="card chat">
       <div class="chat__head">
         <div class="chat__avatar">AI</div>

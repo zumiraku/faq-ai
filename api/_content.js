@@ -1,25 +1,10 @@
-/* ============================================================
-   Stage 5: 編集できるコンテンツ（ナレッジ・質問・会社情報）
-   ------------------------------------------------------------
-   データベースに内容があればそれを使い、
-   無ければリポジトリ内の定義（assets/js/*.js）にそのまま落ちる。
-
-   これにより、
-     ・デモとして配ったURL … これまで通りファイルの内容で動く
-     ・本番              … 人事が画面から書き換えた内容で動く
-   が同じコードで成立する。
-   ============================================================ */
+// DB が空ならリポジトリ内の定義（assets/js/*.js）にフォールバック
 
 const store = require('./_store.js');
 
-/* 初期値。データベースが空のときはこれが使われ、
-   「初期値を読み込む」で、この内容をデータベースへ投入できる。 */
 const seed = require('../assets/js/knowledge.js');
 const interviewSeed = require('../assets/js/interview-data.js');
 
-/* ------------------------------------------------------------
-   読み出し
-   ------------------------------------------------------------ */
 async function getKnowledge({ includeDrafts = false } = {}) {
   const q = store.client();
   if (!q) return seed.KNOWLEDGE;
@@ -28,7 +13,7 @@ async function getKnowledge({ includeDrafts = false } = {}) {
     ? await q`SELECT * FROM knowledge ORDER BY sort_order, id`
     : await q`SELECT * FROM knowledge WHERE published = true ORDER BY sort_order, id`;
 
-  if (!rows.length) return seed.KNOWLEDGE; // 未投入ならファイルの内容
+  if (!rows.length) return seed.KNOWLEDGE;
   return rows.map((r) => ({
     id: r.id,
     category: r.category,
@@ -66,7 +51,6 @@ async function getSetting(key, fallback) {
   return rows.length ? rows[0].value : fallback;
 }
 
-/* 画面が1回の呼び出しで必要なものを揃える */
 async function getAll({ includeDrafts = false } = {}) {
   const [knowledge, questions, company, video, axes] = await Promise.all([
     getKnowledge({ includeDrafts }),
@@ -81,12 +65,7 @@ async function getAll({ includeDrafts = false } = {}) {
   };
 }
 
-/* ------------------------------------------------------------
-   書き込み（管理者のみ。呼び出し側で権限を確認する）
-   ------------------------------------------------------------
-   全置き換えにしている。並び替えと削除を素直に反映できるため。
-   件数は多くても数十件なので、差分を取る複雑さに見合わない。
-   ------------------------------------------------------------ */
+// 権限チェックは呼び出し側。数十件なので差分は取らず全置き換え
 async function saveKnowledge(items, actor) {
   const q = store.client();
   if (!q) return;
@@ -150,7 +129,6 @@ async function saveSetting(key, value, actor) {
   await store.audit('content.setting', key, {}, actor);
 }
 
-/* リポジトリ内の初期値をデータベースへ投入する（最初の1回） */
 async function seedFromFiles(actor) {
   await saveKnowledge(seed.KNOWLEDGE.map((k, i) => ({ ...k, sortOrder: (i + 1) * 10 })), actor);
   await saveQuestions(interviewSeed.QUESTIONS.map((x, i) => ({ ...x, sortOrder: (i + 1) * 10 })), actor);

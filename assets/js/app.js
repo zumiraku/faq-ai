@@ -1,23 +1,12 @@
-/* ============================================================
-   共通処理 — 設定 / 保存 / Claude API 呼び出し / モード切替
-   全ページで読み込む。
-   ============================================================ */
-
 const CONFIG = {
-  /* サーバー側（Vercel の /api）の窓口。
-     ブラウザは Claude を直接呼ばない。APIキーはサーバーにしか無い。 */
+  // ブラウザから Claude は呼ばない。APIキーはサーバーだけ
   API_BASE: '/api',
 
-  /* localStorage のキー */
   KEY_MODE: 'faqai.mode',
   KEY_SESSIONS: 'faqai.sessions',
 };
 
-/* ------------------------------------------------------------
-   localStorage ラッパ
-   シークレットウィンドウやサイトデータ遮断でも落ちないよう
-   すべて try/catch で包む。
-   ------------------------------------------------------------ */
+// シークレットウィンドウやストレージ遮断で落ちないよう全部 try/catch
 const Store = {
   get(key, fallback = null) {
     try {
@@ -40,25 +29,10 @@ const Store = {
   },
 };
 
-/* ------------------------------------------------------------
-   面接の回答ログ
-   ------------------------------------------------------------
-   保存先は2通りあり、サーバーの状態で自動的に切り替わる。
-
-     DATABASE_URL あり … サーバーのデータベース（本番）
-                        端末が違っても同じ記録が見える
-     DATABASE_URL なし … 端末の localStorage（デモ）
-                        これまで通りの挙動。クライアントに渡した
-                        デモURLはこちらで動き続ける
-
-   AI面接（interview.js）が書き込み、
-   人事ダッシュボード（dashboard.js）が読み書きするため、共通側に置く。
-   ------------------------------------------------------------ */
+// 保存先は DB があればサーバー、無ければ localStorage（デモ）
 const Sessions = {
-  /* サーバーに保存先があるか（/api/health の storage が 'db' なら true） */
   remote: false,
 
-  /* --- ローカル（デモ）--- */
   all() {
     const list = Store.get(CONFIG.KEY_SESSIONS, []);
     return Array.isArray(list) ? list : [];
@@ -72,23 +46,19 @@ const Sessions = {
     return record;
   },
 
-  /* --- 保存 ---
-     まずローカルに書く。通信に失敗しても応募者の回答を失わないため。
-     そのうえでサーバーにも送る。 */
+  // 先にローカルへ書く（通信失敗で回答を失わない）
   async save(record) {
     Sessions.saveLocal(record);
     if (!Sessions.remote) return record;
     try {
       await callApi('sessions', record);
     } catch (err) {
-      // サーバーへ送れなくても面接は完了させる。記録は端末に残っている。
+      // 送れなくても面接は完了扱い。記録は端末にある
       console.warn('サーバーへの保存に失敗しました:', err.message);
     }
     return record;
   },
 
-  /* --- 一覧の取得（人事画面）---
-     サーバーがあればサーバーから、無ければ端末内から読む。 */
   async fetchAll() {
     if (!Sessions.remote) return Sessions.all();
     const res = await fetch(`${CONFIG.API_BASE}/sessions`, {
@@ -100,7 +70,6 @@ const Sessions = {
     return Array.isArray(data.records) ? data.records : [];
   },
 
-  /* --- 合否の記録（人事画面のみ）--- */
   async decide(id, decision, memo) {
     if (!Sessions.remote) return null;
     const res = await fetch(`${CONFIG.API_BASE}/sessions`, {
@@ -116,21 +85,15 @@ const Sessions = {
   },
 };
 
-/* ------------------------------------------------------------
-   担当者のログイン（Stage 3）
-   ------------------------------------------------------------
-   Stage 1 の共有鍵を廃止し、担当者ごとのログインに置き換えた。
-   認証はサーバーが発行する HttpOnly Cookie で行うため、
-   画面側は鍵を保持しない（localStorage にも置かない）。
-   ------------------------------------------------------------ */
+// 認証は HttpOnly Cookie。画面側は鍵を持たない（localStorage にも置かない）
 const Auth = {
-  required: false,   // データベース運用ならログインが要る
+  required: false,
   user: null,        // { id, name, email, role }
   needsBootstrap: false,
 
-  /** 権限の判定。viewer < reviewer < admin */
+  // viewer < reviewer < admin
   can(minimum) {
-    if (!Auth.required) return true; // デモ運用では制限しない
+    if (!Auth.required) return true; // デモは制限なし
     if (!Auth.user) return false;
     const rank = { viewer: 1, reviewer: 2, admin: 3 };
     return rank[Auth.user.role] >= rank[minimum];
@@ -172,10 +135,6 @@ const Auth = {
     location.reload();
   },
 
-  /* ------------------------------------------------------------
-     ログインが必要な画面の入口。
-     ログイン済みなら即座に通し、そうでなければログイン画面を出して待つ。
-     ------------------------------------------------------------ */
   async ensure() {
     await Auth.refresh();
     if (!Auth.required || Auth.user) return Auth.user;
@@ -238,7 +197,6 @@ const Auth = {
     });
   },
 
-  /* ヘッダーに、いま誰でログインしているかを出す */
   paintWho() {
     const host = document.getElementById('whoami');
     if (!host || !Auth.user) return;
@@ -252,13 +210,9 @@ const Auth = {
   },
 };
 
-/* ------------------------------------------------------------
-   モード — demo（APIキー不要）／ live（Claude API を実際に呼ぶ）
-   既定は必ず demo。商談中に通信やキーの都合で止まらないための保険。
-   ------------------------------------------------------------ */
+// 既定は必ず demo（商談中に通信やキーの都合で止まらないように）
 const Mode = {
-  /* サーバーが応答し、かつAPIキーが設定されているときだけライブが使える。
-     ローカルで index.html を直接開いた場合は false のまま。 */
+  // file:// で開いたときは false のまま
   serverReady: false,
 
   get() {
@@ -270,13 +224,12 @@ const Mode = {
   },
   isLive() { return Mode.get() === 'live'; },
 
-  /** 各画面が起動時に待ち合わせるための共有の約束（問い合わせは1回だけ） */
+  // 問い合わせは1回だけ。各画面はこれを待つ
   ready() {
     if (!Mode._probe) Mode._probe = Mode.probe();
     return Mode._probe;
   },
 
-  /** 起動時に1度だけ、サーバーが使えるかを確かめる。 */
   async probe() {
     try {
       const res = await fetch(`${CONFIG.API_BASE}/health`, { cache: 'no-store' });
@@ -284,10 +237,9 @@ const Mode = {
       const info = await res.json();
       Mode.serverReady = !!info.configured;
       Mode.model = info.model || '';
-      // Stage 1: 保存先がサーバーにあるかどうか
       Sessions.remote = info.storage === 'db';
     } catch (_) {
-      // file:// で開いた場合や、未デプロイの場合はここに来る。デモモードで動かす。
+      // file:// や未デプロイ。デモで動かす
       Mode.serverReady = false;
     }
     document.dispatchEvent(new CustomEvent('modechange', { detail: { mode: Mode.get() } }));
@@ -295,12 +247,6 @@ const Mode = {
   },
 };
 
-/* ------------------------------------------------------------
-   サーバー側の窓口を呼ぶ
-   ------------------------------------------------------------
-   Claude を呼ぶのはサーバー（/api/*）だけ。
-   ブラウザにAPIキーは一切置かない。
-   ------------------------------------------------------------ */
 async function callApi(path, payload) {
   const res = await fetch(`${CONFIG.API_BASE}/${path}`, {
     method: 'POST',
@@ -309,7 +255,7 @@ async function callApi(path, payload) {
   });
 
   let data = null;
-  try { data = await res.json(); } catch (_) { /* 本文が無い場合もある */ }
+  try { data = await res.json(); } catch (_) { /* 本文なしもある */ }
 
   if (!res.ok) {
     throw new Error((data && data.error) || `サーバーエラー (${res.status})`);
@@ -317,9 +263,6 @@ async function callApi(path, payload) {
   return data || {};
 }
 
-/* ------------------------------------------------------------
-   小物
-   ------------------------------------------------------------ */
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -338,10 +281,6 @@ function formatDateTime(iso) {
   return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/* ------------------------------------------------------------
-   設定モーダル（モード切替とAPIキー）
-   全ページ共通なので、ここでDOMごと差し込む。
-   ------------------------------------------------------------ */
 function mountSettings() {
   const host = document.querySelector('[data-settings-slot]');
   if (!host) return;
@@ -395,7 +334,6 @@ function mountSettings() {
     document.getElementById('modeDot').className = `mode-dot ${live ? 'mode-dot--live' : ''}`;
   }
 
-  /* サーバーが使えるかどうかで、ライブモードの選択可否を切り替える */
   function paintAvailability() {
     const ready = Mode.serverReady;
     liveRadio.disabled = !ready;
@@ -427,19 +365,12 @@ function mountSettings() {
   document.addEventListener('modechange', () => { paintButton(); paintAvailability(); });
   paintButton();
 
-  // サーバーの状態を確認（失敗してもデモモードで動き続ける）
+  // 失敗してもデモで動く
   Mode.ready();
 }
 
-/* ------------------------------------------------------------
-   案内の表示
-   ------------------------------------------------------------
-   クライアントがURLだけ渡されて一人で触る前提の作り。
-   説明する人がいないので、次に何をすればよいかを画面上に置く。
-   一度閉じたら、その端末では出さない。
-   ------------------------------------------------------------ */
+// 案内は一度閉じたらその端末では出さない
 const Guide = {
-  /* 各ページの案内バー（[data-hint="キー"] を持つ要素） */
   mountHints() {
     document.querySelectorAll('[data-hint]').forEach((bar) => {
       const key = `faqai.hint.${bar.dataset.hint}`;
@@ -456,7 +387,6 @@ const Guide = {
     });
   },
 
-  /* 初回訪問時の案内（トップページのみ） */
   mountWelcome() {
     const modal = document.getElementById('welcomeModal');
     if (!modal) return;
@@ -467,7 +397,6 @@ const Guide = {
     modal.querySelectorAll('[data-welcome-close]').forEach((b) => b.addEventListener('click', close));
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
 
-    // ヘッダーの「使い方」からいつでも開き直せる
     const reopen = document.getElementById('guideBtn');
     if (reopen) reopen.addEventListener('click', open);
 

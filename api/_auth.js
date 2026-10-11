@@ -1,20 +1,5 @@
-/* ============================================================
-   Stage 3: 担当者の認証と権限
-   ------------------------------------------------------------
-   仕組み:
-     1. 担当者は自分専用のアクセスキーでログインする
-     2. サーバーは署名付きのセッションCookieを返す（有効期限つき）
-     3. 以降のリクエストはCookieで判定する
-
-   キーは平文で保存せず sha256 のハッシュだけを持つ。
-   Cookie は HttpOnly なので、画面のスクリプトからは読めない。
-
-   ※ メールリンク方式（パスワードを持たない認証）を当初想定していたが、
-     メール送信の経路をまだ用意していないため、担当者ごとの
-     アクセスキーで代替している。得られるもの（誰の操作かが分かる、
-     個別に停止できる）は同じ。メール送信を入れる段階で差し替えられるよう、
-     ログインの入口はこのファイルに閉じてある。
-   ============================================================ */
+// キーは sha256 ハッシュのみ保存。Cookie は HttpOnly
+// メールリンク認証の代替。差し替えるときはこのファイルだけ触ればいい
 
 const crypto = require('crypto');
 const store = require('./_store.js');
@@ -22,11 +7,11 @@ const store = require('./_store.js');
 const COOKIE = 'faqai_session';
 const SESSION_HOURS = 12;
 
-/* 権限の強さ。上位は下位の操作をすべて含む。 */
+// 上位は下位の操作を含む
 const RANK = { viewer: 1, reviewer: 2, admin: 3 };
 
 function secret() {
-  // 専用の値が無ければ、他の秘密値から導出する（設定漏れで落とさないため）
+  // 未設定でも落とさないよう他の秘密値で代用
   return process.env.AUTH_SECRET
     || process.env.HR_ACCESS_TOKEN
     || process.env.ANTHROPIC_API_KEY
@@ -47,11 +32,7 @@ function equal(a, b) {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
-/* ------------------------------------------------------------
-   セッションCookie（署名付き。サーバー側に保存を持たない）
-   失効はユーザーの disabled_at で判定するため、
-   停止した担当者は Cookie が残っていても弾かれる。
-   ------------------------------------------------------------ */
+// 署名付きCookie。失効は disabled_at で見るので停止者は Cookie が残っても弾かれる
 function sign(payload) {
   return crypto.createHmac('sha256', secret()).update(payload).digest('base64url');
 }
@@ -79,7 +60,7 @@ function setCookie(res, value, maxAgeSec) {
     'SameSite=Strict',
     `Max-Age=${maxAgeSec}`,
   ];
-  // 本番は https。ローカルの vercel dev は http なので付けない。
+  // vercel dev は http なので本番だけ
   if (process.env.VERCEL) bits.push('Secure');
   res.setHeader('Set-Cookie', bits.join('; '));
 }
@@ -90,24 +71,16 @@ function readCookie(req) {
   return hit ? hit.slice(COOKIE.length + 1) : '';
 }
 
-/* ------------------------------------------------------------
-   現在のログイン者を取得する
-   ------------------------------------------------------------ */
 async function currentUser(req) {
   const userId = verify(readCookie(req));
   if (!userId) return null;
 
   const user = await store.getUser(userId);
-  if (!user || user.disabledAt) return null; // 停止された担当者は即座に無効
+  if (!user || user.disabledAt) return null;
   return user;
 }
 
-/* ------------------------------------------------------------
-   権限の確認
-   ------------------------------------------------------------
-   使い方:  const me = await require('./_auth.js').require(req, res, 'reviewer');
-            if (!me) return;   // 応答済み
-   ------------------------------------------------------------ */
+// null なら応答済み
 async function requireRole(req, res, minimum = 'viewer') {
   const me = await currentUser(req);
 
@@ -124,13 +97,7 @@ async function requireRole(req, res, minimum = 'viewer') {
   return me;
 }
 
-/* ------------------------------------------------------------
-   初期設定のための経路
-   ------------------------------------------------------------
-   担当者が1人も登録されていないあいだだけ、
-   環境変数 HR_ACCESS_TOKEN で最初の管理者を作れる。
-   1人でも登録されたら、この経路は閉じる。
-   ------------------------------------------------------------ */
+// 担当者0人のときだけ HR_ACCESS_TOKEN で最初の管理者を作れる。1人でもいたら閉じる
 async function bootstrapAllowed() {
   if (!process.env.HR_ACCESS_TOKEN) return false;
   return (await store.countUsers()) === 0;

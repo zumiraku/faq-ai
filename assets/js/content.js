@@ -1,12 +1,4 @@
-/* ============================================================
-   Stage 5: 画面が使うコンテンツの取得
-   ------------------------------------------------------------
-   既定値はリポジトリ内の定義（knowledge.js / interview-data.js）。
-   サーバーがあれば、人事が編集した内容で置き換える。
-
-   これにより file:// で直接開いた場合も動き続ける
-   （クライアントに渡したデモURLの挙動を変えないため）。
-   ============================================================ */
+// 既定値はリポジトリ内の定義。file:// で開いても動くように
 
 const Content = {
   knowledge: (typeof KNOWLEDGE !== 'undefined') ? KNOWLEDGE.slice() : [],
@@ -22,7 +14,6 @@ const Content = {
 
   _loaded: null,
 
-  /** 起動時に1度だけ読み込む。失敗しても既定値のまま動く。 */
   load() {
     if (Content._loaded) return Content._loaded;
 
@@ -47,7 +38,7 @@ const Content = {
         }
         Content.source = data.source || 'file';
       } catch (_) {
-        // サーバーが無い（file:// で開いた等）。既定値のまま進む。
+        // file:// 等。既定値のまま
         Content.source = 'file';
       }
       return Content;

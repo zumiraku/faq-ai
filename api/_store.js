@@ -1,15 +1,4 @@
-/* ============================================================
-   Stage 1: 面接記録の保存先（データベース）
-   ------------------------------------------------------------
-   DATABASE_URL が設定されていればデータベースを使う。
-   設定されていなければ「保存先なし」として扱い、
-   これまで通りブラウザの localStorage だけで動く（デモとして無傷）。
-
-   この切り分けにより、
-     ・クライアントに渡しているデモURL … これまで通り
-     ・本番環境                        … データベース
-   を同じコードで運用できる。
-   ============================================================ */
+// DATABASE_URL 未設定なら保存先なし（デモは localStorage だけで動く）
 
 let sql = null;
 let driverError = null;
@@ -19,12 +8,11 @@ function db() {
   if (!process.env.DATABASE_URL) return null;
 
   try {
-    // Neon / Vercel Postgres / Supabase いずれも DATABASE_URL で接続できる。
-    // HTTP 経由のドライバなので、サーバーレスでも接続が枯渇しない。
+    // HTTP ドライバなのでサーバーレスでも接続が枯渇しない
     const { neon } = require('@neondatabase/serverless');
     sql = neon(process.env.DATABASE_URL);
   } catch (err) {
-    // ドライバ未導入などで落ちても、デモとしての動作は止めない
+    // ドライバが無くてもデモは止めない
     driverError = err;
     sql = null;
   }
@@ -35,16 +23,11 @@ function isEnabled() {
   return !!db();
 }
 
-/* 他のモジュール（_content.js）から同じ接続を使うための入口。
-   返るのはタグ付きテンプレート関数なので、必ず sql`...` の形で使うこと。 */
+// タグ付きテンプレート。必ず sql`...` で使う（プレースホルダ化される）
 function client() {
   return db();
 }
 
-/* ------------------------------------------------------------
-   行 ⇄ 画面で使う形 の変換
-   画面側は既存の形（camelCase）のままにしておきたいので、ここで吸収する。
-   ------------------------------------------------------------ */
 function toRecord(row) {
   return {
     id: row.id,
@@ -65,16 +48,12 @@ function toRecord(row) {
   };
 }
 
-/* ------------------------------------------------------------
-   操作ログ
-   記録に失敗しても本処理は止めない（ログのために面接が失敗しては本末転倒）
-   ------------------------------------------------------------ */
+// 記録失敗で本処理は止めない
 async function audit(action, target, detail = {}, actor = 'system') {
   const q = db();
   if (!q) return;
 
-  // actor は文字列（'system' など）でも、担当者オブジェクトでも受ける。
-  // Stage 3 以降は担当者が渡ってくるので、誰の操作かを列に残す。
+  // actor は文字列か担当者オブジェクト
   const isUser = actor && typeof actor === 'object';
   const label = isUser ? (actor.email || actor.id) : String(actor);
   const actorId = isUser ? actor.id : null;
@@ -84,13 +63,10 @@ async function audit(action, target, detail = {}, actor = 'system') {
     await q`INSERT INTO audit_log (actor, actor_id, actor_email, action, target, detail)
             VALUES (${label}, ${actorId}, ${actorEmail}, ${action}, ${target},
                     ${JSON.stringify(detail)}::jsonb)`;
-  } catch (_) { /* 記録できなくても処理は続ける */ }
+  } catch (_) { /* 無視 */ }
 }
 
-/* ------------------------------------------------------------
-   面接記録の保存（応募者側から呼ばれる）
-   同じ id での再送信は上書きする（回線が切れた際の二重送信対策）
-   ------------------------------------------------------------ */
+// 同じ id は上書き（回線切れ時の二重送信対策）
 async function saveSession(rec) {
   const q = db();
   if (!q) return null;
@@ -113,21 +89,17 @@ async function saveSession(rec) {
       total   = EXCLUDED.total,
       comment = EXCLUDED.comment
   `;
-  // 合否（human_decision / human_memo）はここでは触らない。
-  // 応募者側からの送信で、人事の判断が上書きされることがあってはならない。
+  // human_decision / human_memo は触らない（応募者側の送信で人事の判断を上書きさせない）
 
-  // 受験完了。このURLは以降開けなくなる（Stage 2: 使い切り）
+  // URL は使い切り
   if (rec.token) {
-    try { await markUsed(rec.token); } catch (_) { /* 記録は保存済み。ここで失敗しても中断しない */ }
+    try { await markUsed(rec.token); } catch (_) { /* 記録は保存済みなので続行 */ }
   }
 
   await audit('session.save', rec.id, { total: rec.total, mode: rec.mode }, 'candidate');
   return rec.id;
 }
 
-/* ------------------------------------------------------------
-   一覧・詳細（人事側から呼ばれる。鍵が必要）
-   ------------------------------------------------------------ */
 async function listSessions(limit = 200) {
   const q = db();
   if (!q) return [];
@@ -139,10 +111,7 @@ async function listSessions(limit = 200) {
   return rows.map(toRecord);
 }
 
-/* ------------------------------------------------------------
-   人事による判断の記録
-   AIはここに書き込めない。人事の操作だけがこの経路を通る。
-   ------------------------------------------------------------ */
+// 合否は人事の操作だけ。AI はここを通らない
 async function decideSession(id, { decision, memo, actor = 'hr' }) {
   const q = db();
   if (!q) return null;
@@ -150,7 +119,6 @@ async function decideSession(id, { decision, memo, actor = 'hr' }) {
   const valid = ['pass', 'hold', 'reject', null];
   if (!valid.includes(decision)) throw Object.assign(new Error('不正な判断値です。'), { status: 400 });
 
-  // actor は担当者オブジェクト（Stage 3）か文字列。表示用の名前を取り出す。
   const actorLabel = (actor && typeof actor === 'object')
     ? (actor.name ? `${actor.name}（${actor.email}）` : actor.email)
     : String(actor);
@@ -170,18 +138,13 @@ async function decideSession(id, { decision, memo, actor = 'hr' }) {
   return toRecord(rows[0]);
 }
 
-/* ============================================================
-   Stage 2: 候補者と受験用URL
-   ============================================================ */
-
 const crypto = require('crypto');
 
-/* 推測できない長さのランダム文字列。URLにそのまま載せられる形にする。 */
 function newToken() {
   return crypto.randomBytes(24).toString('base64url');
 }
 
-/* 受験状況の判定。画面と応募者側の両方がこの1箇所を見る。 */
+// 画面と応募者側の両方がここで判定する
 function statusOf(row) {
   const now = Date.now();
   if (row.revoked_at) return 'revoked';
@@ -216,7 +179,6 @@ async function listCandidates(limit = 300) {
   return rows.map(toCandidate);
 }
 
-/* 担当者オブジェクトでも文字列でも受けられるようにする（列は TEXT のため） */
 function actorLabel(actor) {
   if (actor && typeof actor === 'object') return actor.email || actor.id || 'unknown';
   return String(actor);
@@ -238,7 +200,7 @@ async function createCandidate({ name, role, email, note, expiresInDays = 14, ac
   return toCandidate(rows[0]);
 }
 
-/* 応募者側が開いたときに使う。一覧は返さず、その1件だけを返す。 */
+// 応募者側用。1件だけ返す
 async function getCandidate(token) {
   const q = db();
   if (!q) return null;
@@ -246,7 +208,7 @@ async function getCandidate(token) {
   return rows.length ? toCandidate(rows[0]) : null;
 }
 
-/* 受験開始を記録する（初回のみ）。中断からの再開では上書きしない。 */
+// 再開時は上書きしない
 async function markStarted(token) {
   const q = db();
   if (!q) return null;
@@ -258,7 +220,6 @@ async function markStarted(token) {
   return rows.length ? toCandidate(rows[0]) : null;
 }
 
-/* 受験完了。以降このURLは開けない（使い切り）。 */
 async function markUsed(token) {
   const q = db();
   if (!q || !token) return null;
@@ -270,7 +231,6 @@ async function markUsed(token) {
   return rows.length ? toCandidate(rows[0]) : null;
 }
 
-/* 無効化・期限延長・案内送信済みの記録 */
 async function updateCandidate(token, { revoke, extendDays, invited, actor = 'hr' }) {
   const q = db();
   if (!q) return null;
@@ -298,11 +258,7 @@ async function updateCandidate(token, { revoke, extendDays, invited, actor = 'hr
   return rows.length ? toCandidate(rows[0]) : null;
 }
 
-/* ============================================================
-   Stage 4: 個人情報の運用
-   ============================================================ */
-
-/* 保存期間。クライアントの規程に合わせて環境変数で変える。 */
+// 保存期間（日）。規程に合わせて環境変数で変える
 const RETENTION = {
   session:   Number(process.env.RETENTION_DAYS_SESSION   || 180),
   candidate: Number(process.env.RETENTION_DAYS_CANDIDATE || 365),
@@ -313,13 +269,7 @@ function retentionPolicy() {
   return { ...RETENTION };
 }
 
-/* ------------------------------------------------------------
-   完全削除
-   ------------------------------------------------------------
-   応募者からの削除請求と、保存期間切れの両方で使う。
-   論理削除（フラグを立てるだけ）にはしない。
-   「消してほしい」に対して「見えなくしました」では答えになっていないため。
-   ------------------------------------------------------------ */
+// 論理削除にはしない。削除請求には物理削除で応える
 async function purgeCandidate(token, actor = 'hr') {
   const q = db();
   if (!q) return null;
@@ -327,7 +277,7 @@ async function purgeCandidate(token, actor = 'hr') {
   const sessions = await q`DELETE FROM interview_sessions WHERE token = ${token} RETURNING id`;
   await q`DELETE FROM candidates WHERE token = ${token}`;
 
-  // 監査ログには氏名も回答も残さない。「消したという事実」だけを残す。
+  // 監査ログには消した事実だけ。氏名・回答は残さない
   await audit('data.purge', token, { sessions: sessions.length, reason: 'request' }, actor);
   return { sessions: sessions.length };
 }
@@ -340,23 +290,20 @@ async function purgeSession(id, actor = 'hr') {
   return true;
 }
 
-/* ------------------------------------------------------------
-   保存期間切れの自動削除（毎日1回、cron から呼ばれる）
-   ------------------------------------------------------------ */
+// cron から日次
 async function purgeExpired() {
   const q = db();
   if (!q) return null;
 
   const days = (n) => `${Math.max(1, n)} days`;
 
-  // 面接記録
   const sessions = await q`
     DELETE FROM interview_sessions
     WHERE finished_at < now() - ${days(RETENTION.session)}::interval
     RETURNING id
   `;
 
-  // 候補者（面接記録が残っているものは消さない。先に記録が消えてから）
+  // 面接記録が残っている候補者は消さない
   const candidates = await q`
     DELETE FROM candidates
     WHERE created_at < now() - ${days(RETENTION.candidate)}::interval
@@ -366,19 +313,17 @@ async function purgeExpired() {
     RETURNING token
   `;
 
-  // 操作ログ
   const audits = await q`
     DELETE FROM audit_log
     WHERE at < now() - ${days(RETENTION.audit)}::interval
     RETURNING id
   `;
 
-  // Stage 6: 答えられなかった質問。閲覧者が自由に入力した文章なので、
-  // 面接記録と同じ期間で消す（個人情報が紛れ込む可能性があるため）。
+  // 未回答質問は自由入力で個人情報が混ざりうるので面接記録と同じ期間で消す
   let misses = 0;
   try {
     misses = await require('./_insights.js').purgeOldMisses(RETENTION.session);
-  } catch (_) { /* テーブル未作成でも他の削除は続ける */ }
+  } catch (_) { /* テーブル未作成でも続行 */ }
 
   const result = {
     sessions: sessions.length,
@@ -387,14 +332,11 @@ async function purgeExpired() {
     chatMisses: misses,
   };
 
-  // 何を消したかは件数だけ記録する（個人を特定できる情報は書かない）
+  // 件数だけ記録（個人を特定できる情報は書かない）
   await audit('data.purge_expired', null, { ...result, retention: RETENTION }, 'system');
   return result;
 }
 
-/* ------------------------------------------------------------
-   削除請求
-   ------------------------------------------------------------ */
 async function createDeletionRequest({ token, name, email, message }) {
   const q = db();
   if (!q) return null;
@@ -403,7 +345,7 @@ async function createDeletionRequest({ token, name, email, message }) {
     VALUES (${token || null}, ${name || null}, ${email || null}, ${message || ''})
     RETURNING id, requested_at
   `;
-  // 依頼内容そのものは監査ログに書かない（本文に個人情報が含まれうるため）
+  // 本文に個人情報が含まれうるので監査ログには書かない
   await audit('deletion.request', String(rows[0].id), {}, 'candidate');
   return rows[0];
 }
@@ -429,7 +371,7 @@ async function listDeletionRequests() {
   }));
 }
 
-/* 対応済みにする。対応と同時に、依頼に含まれる個人情報も消す。 */
+// 対応済みにすると同時に依頼中の個人情報も消す
 async function closeDeletionRequest(id, { status = 'done', note = '', actor = 'hr' }) {
   const q = db();
   if (!q) return null;
@@ -448,10 +390,6 @@ async function closeDeletionRequest(id, { status = 'done', note = '', actor = 'h
   await audit('deletion.close', String(id), { status }, actor);
   return rows.length ? rows[0] : null;
 }
-
-/* ============================================================
-   Stage 3: 担当者
-   ============================================================ */
 
 function toUser(row) {
   return {
@@ -479,7 +417,6 @@ async function getUser(id) {
   return rows.length ? toUser(rows[0]) : null;
 }
 
-/* ログイン。メールとキーの両方が合ったときだけ担当者を返す。 */
 async function authenticate(email, keyHash) {
   const q = db();
   if (!q) return null;
@@ -522,7 +459,6 @@ async function updateUser(id, { role, disabled, keyHash }) {
   return getUser(id);
 }
 
-/* 操作ログ（担当者つき）。誰が何をしたかを追えるようにする。 */
 async function listAudit({ limit = 200, target = null } = {}) {
   const q = db();
   if (!q) return [];

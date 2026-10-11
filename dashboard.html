@@ -8,8 +8,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="assets/css/base.css">
 <style>
-  /* メーターの下地は、塗りと同じ系統の淡い色にする（青の上の青）。
-     灰色の溝にすると、点数の低さと「空き」の区別がつきにくくなるため。 */
+  /* 下地は塗りと同系の淡色。灰色だと低得点と空きの区別がつかない */
   :root {
     --track:        #dcebee;
     --track-warn:   #f4e8d2;
@@ -35,7 +34,6 @@
   }
   @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 
-  /* ---------- 候補者一覧 ---------- */
   .list-head {
     display: flex; align-items: center; gap: 8px;
     padding: 13px 16px; border-bottom: 1px solid var(--border-soft);
@@ -62,12 +60,10 @@
   .row__role { font-size: 12px; color: var(--text-muted); }
   .row__meta { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 3px; }
 
-  /* ---------- 詳細 ---------- */
   .detail-head {
     display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap;
     padding: 20px; border-bottom: 1px solid var(--border-soft);
   }
-  /* 1画面にひとつだけの主役の数字 */
   .hero {
     flex: none; text-align: center; min-width: 96px;
     padding: 10px 16px; border-radius: var(--radius); background: var(--surface-2);
@@ -87,7 +83,6 @@
     color: var(--text-faint); margin-bottom: 14px;
   }
 
-  /* ---------- スコアの内訳（メーター） ---------- */
   .meters { display: grid; gap: 16px; }
   @media (min-width: 640px) { .meters { grid-template-columns: 1fr 1fr; gap: 16px 24px; } }
 
@@ -108,7 +103,6 @@
     background: var(--surface-2); margin: 0;
   }
 
-  /* ---------- 人による判断 ---------- */
   .decide-box { border: 2px solid var(--accent); border-radius: var(--radius); padding: 16px; }
   .decide-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
   .decide-btn {
@@ -121,7 +115,6 @@
   .decide-btn[data-decision="hold"].is-on   { background: var(--warn);   color: #fff; border-color: transparent; }
   .decide-btn[data-decision="reject"].is-on { background: var(--danger); color: #fff; border-color: transparent; }
 
-  /* ---------- 問答ログ ---------- */
   .transcript { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
   .qa { padding: 14px 16px; border-radius: var(--radius); background: var(--surface-2); }
   .qa__q { font-size: 13.5px; font-weight: 700; line-height: 1.75; }
@@ -167,7 +160,7 @@
     <button class="btn btn--ghost btn--sm" id="resetBtn" type="button">見本データに戻す</button>
   </div>
 
-  <!-- 記録がどこに保存されているかを常に明示する（デモか本番かの取り違えを防ぐ） -->
+  <!-- 保存先は常に表示（デモと本番の取り違え防止） -->
   <p class="hint" id="sourceNote" style="margin:0 0 6px"></p>
 
   <div class="hint-bar" data-hint="dashboard" hidden>
@@ -182,8 +175,7 @@
     <button class="hint-bar__close" type="button">閉じる</button>
   </div>
 
-  <!-- 削除請求。応募者の権利に関わるので、他のどの案内よりも上に出す。
-       0件のときは何も表示しない（普段の画面を圧迫しない）。 -->
+  <!-- 削除請求は他の案内より上に。0件なら出さない -->
   <section class="card card__pad" id="reqPanel" hidden style="margin:16px 0;border-color:var(--warn,#c47f17)">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span class="badge badge--warn">未対応の削除請求 <b id="reqCount">0</b>件</span>
@@ -205,13 +197,11 @@
 
   <div class="layout">
 
-    <!-- ============ 候補者一覧 ============ -->
     <div class="card">
       <div class="list-head">候補者（スコア順）<span class="site-header__spacer"></span><span id="count">—</span></div>
       <div class="list" id="list"></div>
     </div>
 
-    <!-- ============ 詳細 ============ -->
     <div>
       <div class="card card__pad" id="empty" hidden>
         <p class="muted" style="margin:0">左の一覧から候補者を選んでください。</p>
@@ -236,7 +226,7 @@
           </div>
         </div>
 
-        <!-- ---- 人による判断（AIの評価より先に置く。ここが結論を出す場所） ---- -->
+        <!-- 人の判断は AI の評価より先に置く -->
         <div class="sec">
           <h3>人事担当者による最終判断</h3>
           <div class="decide-box">
@@ -252,21 +242,18 @@
             <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
               <button class="btn btn--sm" id="memoSave" type="button">メモを保存</button>
               <span style="flex:1"></span>
-              <!-- 削除請求への対応。DB接続時のみ表示される -->
               <button class="btn btn--ghost btn--sm" id="purgeBtn" type="button" hidden
                       title="応募者からの削除請求に応じる場合に使用します">この記録を完全に削除</button>
             </div>
           </div>
         </div>
 
-        <!-- ---- AIのスコア ---- -->
         <div class="sec">
           <h3>AIによる評価（参考値）</h3>
           <div class="meters" id="meters"></div>
           <p class="ai-comment" id="dComment" style="margin-top:18px">—</p>
         </div>
 
-        <!-- ---- 全問答ログ ---- -->
         <div class="sec">
           <h3>回答ログ（全文）</h3>
           <ul class="transcript" id="transcript"></ul>

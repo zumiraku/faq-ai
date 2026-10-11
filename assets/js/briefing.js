@@ -1,23 +1,9 @@
-/* ============================================================
-   会社説明会ページ — 動画プレーヤー（デモ）＋ AI人事担当チャット
-   ============================================================ */
-
-/* ============================================================
-   1. 動画プレーヤー
-   ------------------------------------------------------------
-   ★ 差し替えポイント ★
-   ここは実際の <video> ではなく、尺と再生位置だけを持つ疑似プレーヤー。
-   本番では video 要素に置き換え、
-     tick()          → video の timeupdate イベント
-     seekTo(sec)     → video.currentTime = sec
-     togglePlay()    → video.play() / video.pause()
-   に差し替えれば、チャプター連動はそのまま使える。
-   ============================================================ */
+// 疑似プレーヤー。tick / seekTo / togglePlay を video に差し替えればチャプター連動はそのまま使える
 const Player = (() => {
   let current = 0;
   let playing = false;
   let timer = null;
-  let video = null;   // 実際の動画がある場合のみ。無ければ疑似プレーヤー。
+  let video = null;   // 動画URLがあるときだけ
 
   const el = {
     stage:   document.getElementById('playBtn'),
@@ -112,10 +98,6 @@ const Player = (() => {
     });
   }
 
-  /* ------------------------------------------------------------
-     Stage 5: 実際の動画が設定されていれば、疑似プレーヤーを差し替える。
-     チャプターの時刻はそのまま video.currentTime に対応する。
-     ------------------------------------------------------------ */
   function useRealVideo(url) {
     const stage = document.querySelector('.player__stage');
     stage.innerHTML = `<video id="realVideo" controls playsinline preload="metadata"
@@ -166,15 +148,7 @@ const Player = (() => {
   return { init, seekTo };
 })();
 
-/* ============================================================
-   2. ナレッジ検索（デモモードの回答エンジン）
-   ------------------------------------------------------------
-   日本語は分かち書きがないため、
-     ・キーワードの部分一致（強い手がかり）
-     ・代表質問との2-gram一致率（表記ゆれに強い）
-   の2つを足し合わせて最も近い項目を選ぶ。
-   どれも閾値に届かなければ「わかりません」と答え、人事へ引き継ぐ。
-   ============================================================ */
+// 分かち書きなしなので、キーワード部分一致＋2-gram 一致率の合計で選ぶ。閾値未満は人事へ
 const MATCH_THRESHOLD = 3;
 
 function normalizeJa(s) {
@@ -183,11 +157,7 @@ function normalizeJa(s) {
     .replace(/[！？。、，．,.\s　"'"'（）()「」『』【】・:：;；~〜ー-]/g, '');
 }
 
-/* 日本語の丁寧な言い回し（「〜はありますか」「〜を教えてください」など）は
-   どの質問にも共通して出てくる。これを残したまま2-gram を比べると、
-   中身が全く違う質問どうしが「文末が同じ」というだけで似てしまう。
-   （例：「駐車場はありますか」と「賞与や昇給はありますか」）
-   照合の前に、意味を持たない定型部分を落としておく。 */
+// 「〜はありますか」等の定型部分を落とす。残すと文末だけで似てしまう
 const BOILERPLATE = [
   'について教えてください', 'を教えてください', 'について教えて', '教えてください', 'おしえてください',
   'はどうなっていますか', 'はどうですか', 'でしょうか', 'はありますか', 'がありますか',
@@ -217,7 +187,6 @@ function scoreEntry(query, entry) {
     if (nk && nq.includes(nk)) score += nk.length * 2;
   }
 
-  // 2-gram の比較は、定型の言い回しを落とした「中身」どうしで行う
   const qCore = stripBoilerplate(nq);
   const eCore = stripBoilerplate(normalizeJa(entry.q));
   const qGrams = new Set(bigrams(qCore));
@@ -236,12 +205,7 @@ function searchKnowledge(query) {
     .sort((a, b) => b.score - a.score);
 }
 
-/* ------------------------------------------------------------
-   Stage 6: 答えられなかった質問の記録
-   ------------------------------------------------------------
-   記録するのは質問文だけ。誰が入力したかは送らない。
-   サーバーが無い（デモ）場合は何もしない。
-   ------------------------------------------------------------ */
+// 送るのは質問文だけ。入力者の情報は送らない
 function reportMiss(question, best) {
   if (!Sessions.remote) return;
   fetch(`${CONFIG.API_BASE}/insights`, {
@@ -253,12 +217,9 @@ function reportMiss(question, best) {
       bestScore: best ? best.score : 0,
       bestId: best ? best.entry.id : null,
     }),
-  }).catch(() => { /* 記録できなくても会話は続ける */ });
+  }).catch(() => { /* 無視 */ });
 }
 
-/* ============================================================
-   3. チャット
-   ============================================================ */
 const Chat = (() => {
   const log = document.getElementById('log');
   const form = document.getElementById('chatForm');
@@ -268,9 +229,8 @@ const Chat = (() => {
 
   let busy = false;
   const asked = new Set();
-  const history = []; // ライブモードで文脈を保つための会話履歴
+  const history = [];
 
-  /* ---------- 描画 ---------- */
   function bubble(who, html, sources = []) {
     const src = sources.length
       ? `<div class="msg__src">${sources.map((s) => `<span class="badge badge--accent">出典: ${escapeHtml(s)}</span>`).join('')}</div>`
@@ -292,7 +252,6 @@ const Chat = (() => {
     return node;
   }
 
-  /* ---------- サジェスト ---------- */
   function paintChips() {
     const pool = Content.knowledge.filter((e) => !asked.has(e.id) && e.id !== 'contact');
     chips.innerHTML = pool.slice(0, 4)
@@ -300,14 +259,11 @@ const Chat = (() => {
       .join('');
   }
 
-  /* ---------- 回答（デモモード） ---------- */
   function answerFromKnowledge(query) {
     const ranked = searchKnowledge(query);
     const best = ranked[0];
 
     if (!best || best.score < MATCH_THRESHOLD) {
-      // Stage 6: 答えられなかった質問を残す。ナレッジの追加候補になる。
-      // その場で記録しないと後から復元できないので、ここで送る。
       reportMiss(query, best);
 
       const picks = Content.knowledge.slice(0, 3).map((e) => e.q);
@@ -324,7 +280,6 @@ const Chat = (() => {
     asked.add(best.entry.id);
     const sources = [best.entry.category];
 
-    // 僅差の2位があれば補足として添える
     const second = ranked[1];
     let extra = '';
     if (second && second.score >= MATCH_THRESHOLD && second.score > best.score * 0.72) {
@@ -336,9 +291,7 @@ const Chat = (() => {
     return { text: best.entry.a + extra, sources, id: best.entry.id };
   }
 
-  /* ---------- 回答（ライブモード） ----------
-     システムプロンプトとナレッジの組み立てはサーバー側（api/chat.js）が行う。
-     ブラウザは会話履歴を渡すだけ。 */
+  // プロンプト組み立てはサーバー側。ここは履歴を渡すだけ
   async function answerFromClaude(query) {
     history.push({ role: 'user', content: query });
 
@@ -346,7 +299,7 @@ const Chat = (() => {
 
     history.push({ role: 'assistant', content: text });
 
-    // 出典は手元のナレッジ照合で補う（表示用）
+    // 出典は手元の照合で補う（表示用）
     const ranked = searchKnowledge(query);
     const sources = ranked[0] && ranked[0].score >= MATCH_THRESHOLD ? [ranked[0].entry.category] : [];
     if (ranked[0]) asked.add(ranked[0].entry.id);
@@ -354,7 +307,6 @@ const Chat = (() => {
     return { text, sources };
   }
 
-  /* ---------- 送信 ---------- */
   async function send(rawText) {
     const text = String(rawText || '').trim();
     if (!text || busy) return;
@@ -371,7 +323,6 @@ const Chat = (() => {
       if (Mode.isLive()) {
         result = await answerFromClaude(text);
       } else {
-        // 人が打っているように見せる程度の間を置く
         await new Promise((r) => setTimeout(r, 420 + Math.random() * 380));
         result = answerFromKnowledge(text);
       }
@@ -389,7 +340,6 @@ const Chat = (() => {
     }
   }
 
-  /* ---------- 初期化 ---------- */
   function paintStatus() {
     status.textContent = Mode.isLive() ? '24時間対応・ライブモード' : '24時間対応・デモモード';
   }
@@ -432,7 +382,7 @@ const Chat = (() => {
 })();
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await Content.load();   // 人事が編集した内容があれば取り込む
+  await Content.load();
   Player.init();
   Chat.init();
 });

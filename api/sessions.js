@@ -1,31 +1,10 @@
-/* ============================================================
-   /api/sessions — 面接記録の保存と取得
-   ------------------------------------------------------------
-   GET    一覧を返す        … 人事用。鍵が必要
-   POST   面接記録を保存する … 応募者側から。鍵は不要
-   PATCH  合否とメモを記録   … 人事用。鍵が必要
-
-   読み書きで必要な権限が違う点が重要。
-   応募者は「自分の回答を出す」ことはできるが、
-   「他人の回答を読む」ことはできない。
-   ============================================================ */
+// POST（応募者）は鍵不要、GET/PATCH は要ログイン。応募者に他人の回答は読ませない
 
 const store = require('./_store.js');
 const auth = require('./_auth.js');
 
 const MAX_ANSWERS = 20;
 const MAX_TEXT = 8000;
-
-/* ------------------------------------------------------------
-   Stage 3: 共有の鍵から、担当者ごとのログインへ
-   ------------------------------------------------------------
-   Stage 1 では全員が同じ鍵を使っていたため、操作ログに
-   「誰がやったか」を残せなかった。いまはセッションから担当者が分かる。
-
-   必要な権限:
-     viewer   … 一覧と詳細の閲覧
-     reviewer … 合否とメモの記録
-   ------------------------------------------------------------ */
 
 function readBody(req) {
   if (typeof req.body === 'string') {
@@ -34,7 +13,7 @@ function readBody(req) {
   return req.body || {};
 }
 
-/* 応募者側から届く記録を、そのまま信用せずに整える */
+// 応募者側の記録は信用しない
 function sanitize(raw) {
   if (!raw || typeof raw !== 'object') return null;
   if (!raw.id || !raw.candidate || !raw.candidate.name) return null;
@@ -68,15 +47,13 @@ function sanitize(raw) {
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
-  // データベース未設定なら、画面側は localStorage で動く。
-  // 「保存先が無い」ことを伝えて、画面側にそのまま処理させる。
+  // DB なしなら画面側が localStorage で処理する
   if (!store.isEnabled()) {
     res.status(501).json({ error: '保存先が未設定です。', storage: 'local' });
     return;
   }
 
   try {
-    /* ---------- 一覧（人事） ---------- */
     if (req.method === 'GET') {
       const me = await auth.requireRole(req, res, 'viewer');
       if (!me) return;
@@ -85,7 +62,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    /* ---------- 保存（応募者） ---------- */
     if (req.method === 'POST') {
       const rec = sanitize(readBody(req));
       if (!rec) {
@@ -97,9 +73,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    /* ---------- 合否の記録（人事） ---------- */
     if (req.method === 'PATCH') {
-      // 合否の記録は reviewer 以上。閲覧のみの担当者は押せない。
       const me = await auth.requireRole(req, res, 'reviewer');
       if (!me) return;
 
@@ -111,7 +85,7 @@ module.exports = async function handler(req, res) {
       const record = await store.decideSession(String(body.id), {
         decision: body.decision === undefined ? null : body.decision,
         memo: String(body.memo || '').slice(0, MAX_TEXT),
-        actor: me, // 誰が判断したかを記録に残す
+        actor: me,
       });
       res.status(200).json({ ok: true, record });
       return;

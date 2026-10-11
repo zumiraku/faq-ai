@@ -15,9 +15,7 @@
 <ul id="out"></ul>
 
 <script>
-/* 開発用の動作確認ページ。リポジトリには含めない（.gitignore 済み）。
-   各画面を iframe で読み込み、実際に操作して結果を確かめる。
-   結果は document.title に書き出し、DevTools の HTTP エンドポイントから読む。 */
+// 開発用。各画面を iframe で操作し、結果は document.title に出す
 
 const results = [];
 const errors = [];
@@ -41,8 +39,7 @@ function win(f) {
 const n = (d, s) => d.querySelectorAll(s).length;
 const txt = (d, s) => { const e = d.querySelector(s); return e ? e.textContent.trim() : '(なし)'; };
 
-/* チャットは実際のUI経由で送る。
-   briefing.js の Chat は const 宣言なので window のプロパティにはならない。 */
+// Chat は const なので window から触れない。UI 経由で送る
 function ask(w, d, question) {
   const box = d.getElementById('chatInput');
   box.value = question;
@@ -63,16 +60,14 @@ function finishReport() {
   document.title = label.slice(0, 420);
 }
 
-// 途中で落ちても必ず結果を出す（無言で止まると原因が分からないため）
+// 落ちても必ず結果を出す
 window.addEventListener('unhandledrejection', (e) => {
   errors.push(`unhandled: ${e.reason && e.reason.message ? e.reason.message : e.reason}`);
   finishReport();
 });
 setTimeout(() => { if (document.title === 'SELFTEST RUNNING') { errors.push('timeout'); finishReport(); } }, 120000);
 
-/* サーバー側（api/*.js）はこの環境に Node が無く実行できない。
-   せめて構文だけは確かめる。new Function はコードを解析するが実行はしないので、
-   require や module が未定義でも問題なく、構文エラーだけを拾える。 */
+// new Function は解析だけで実行しないので、api/*.js の構文確認に使える
 async function syntaxCheck(paths) {
   for (const p of paths) {
     try {
@@ -89,7 +84,6 @@ async function syntaxCheck(paths) {
 (async function run() {
   window.addEventListener('error', (e) => errors.push(`harness: ${e.message}`));
 
-  /* ============ 0. 全JSの構文確認（サーバー側を含む） ============ */
   await syntaxCheck([
     'api/_claude.js', 'api/chat.js', 'api/interview.js', 'api/health.js',
     'api/_store.js', 'api/sessions.js', 'api/candidates.js',
@@ -100,7 +94,6 @@ async function syntaxCheck(paths) {
     'assets/js/dashboard.js', 'assets/js/dashboard-seed.js', 'assets/js/candidates.js', 'assets/js/team.js', 'assets/js/content.js', 'assets/js/content-admin.js', 'assets/js/insights.js',
   ]);
 
-  // JSON も壊れていないか
   for (const p of ['package.json', 'vercel.json']) {
     try {
       JSON.parse(await (await fetch(p)).text());
@@ -110,7 +103,6 @@ async function syntaxCheck(paths) {
     }
   }
 
-  /* ============ ① 会社説明会：実際に質問する ============ */
   {
     const f = await loadFrame('briefing.html');
     const w = win(f); const d = w.document;
@@ -118,14 +110,12 @@ async function syntaxCheck(paths) {
     check('briefing: 初期表示', n(d, '.chapter') === 6 && n(d, '.chip') === 4);
     check('briefing: 案内バーが出る', !d.querySelector('[data-hint="briefing"]').hidden);
 
-    // 動画を再生 → 時計が進むか
     d.getElementById('playBtn').click();
     await wait(2400);
     const clock = txt(d, '#tNow');
     check('briefing: 再生で時間が進む', clock !== '0:00', `t=${clock}`);
     d.getElementById('playBtn').click();
 
-    // チャプター送り
     d.querySelectorAll('.chapter')[3].click();
     await wait(200);
     check('briefing: チャプター移動', txt(d, '#tNow') === '5:00', txt(d, '#tNow'));
@@ -135,7 +125,6 @@ async function syntaxCheck(paths) {
       return all[all.length - 1].textContent;
     };
 
-    // 答えられるべき質問 → 期待する語
     const shouldAnswer = [
       ['福利厚生を教えてください', '住宅手当'],
       ['給与はどのくらいですか', '26.5'],
@@ -152,8 +141,7 @@ async function syntaxCheck(paths) {
     }
     check('briefing: 出典バッジが出る', n(d, '.msg__src .badge') >= 1);
 
-    // 答えてはいけない質問 → 人事へ引き継ぐ
-    // 「〜はありますか」のような共通の言い回しで誤ヒットしないことの確認も兼ねる
+    // 「〜はありますか」の文末だけで誤ヒットしないことも見る
     const shouldDefer = ['駐車場はありますか', 'ペット同伴はできますか', '制服はありますか', '食堂はありますか'];
     for (const q of shouldDefer) {
       ask(w, d, q);
@@ -164,7 +152,6 @@ async function syntaxCheck(paths) {
     }
   }
 
-  /* ============ ② AI面接：最後まで通す ============ */
   {
     const f = await loadFrame('interview.html?token=demo-tanaka');
     const w = win(f); const d = w.document;
@@ -177,7 +164,6 @@ async function syntaxCheck(paths) {
     await wait(300);
     check('interview: 1問目表示', txt(d, '#qStep') === '質問 1 / 6', txt(d, '#qStep'));
 
-    // クライアントが一人で試すための補助ボタン
     const sampleBtn = d.getElementById('sampleBtn');
     check('interview: 回答例ボタンが出る', !sampleBtn.hidden);
     sampleBtn.click();
@@ -201,13 +187,11 @@ async function syntaxCheck(paths) {
     check('interview: 完了画面に到達', done && !done.hidden);
     check('interview: 6問回答した', txt(d, '#doneCount') === '6問', txt(d, '#doneCount'));
 
-    // 設計上の要点：完了画面に合否を出さない
     const doneText = done ? done.textContent : '';
     check('interview: 完了画面に合否を出さない',
       !doneText.includes('合格') && !doneText.includes('不合格') && doneText.includes('追ってご連絡'),
       doneText.includes('合格') ? '合否が出ている' : 'OK');
 
-    // 保存されたか
     const saved = JSON.parse(w.eval('JSON.stringify(Sessions.all())'));
     const mine = saved.filter((r) => r.token === 'demo-tanaka' && r.id.indexOf('seed') !== 0);
     check('interview: 記録が保存される', mine.length >= 1, `saved=${saved.length}`);
@@ -220,15 +204,12 @@ async function syntaxCheck(paths) {
     }
   }
 
-  /* ============ ③ 人事ダッシュボード：人が合否を押す ============ */
   {
     const f = await loadFrame('dashboard.html');
     const w = win(f); const d = w.document;
 
-    // 面接を1件受けたあとでも、見本3件が消えずに並んでいること
     check('dashboard: 見本3件＋実施した面接が並ぶ', n(d, '.row') >= 4, `rows=${n(d, '.row')}`);
 
-    // 台本の山場：スコア9点の鈴木さんを人事が「合格」にできるか
     const suzuki = d.querySelector('[data-id="seed-suzuki"]');
     check('dashboard: 鈴木さんの行がある', !!suzuki);
     if (suzuki) {
@@ -246,7 +227,6 @@ async function syntaxCheck(paths) {
       check('dashboard: 一覧のバッジも変わる',
         d.querySelector('[data-id="seed-suzuki"]').textContent.includes('合格'));
 
-      // もう一度押して未判定に戻せる（誤操作の取り消し）
       d.querySelector('[data-decision="pass"]').click();
       await wait(200);
       check('dashboard: 再押下で未判定へ戻せる', txt(d, '#decisionState').includes('未判定'));
@@ -259,8 +239,6 @@ async function syntaxCheck(paths) {
     check('dashboard: 参考値である旨の明記',
       d.body.textContent.includes('合否の決定ではありません'));
 
-    /* 削除請求のパネルは、データベース接続時にだけ出す。
-       デモで「未対応の削除請求 0件」が出ると、実在しない請求があるように見える。 */
     check('dashboard: デモでは削除請求のパネルを出さない',
       d.querySelector('#reqPanel') && d.querySelector('#reqPanel').hidden);
     check('dashboard: 削除請求の受け皿は用意されている',

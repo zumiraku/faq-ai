@@ -1,17 +1,4 @@
-/* ============================================================
-   /api/candidates — 候補者の登録とURLの発行
-   ------------------------------------------------------------
-   GET   ?token=xxx  … 応募者側。その1件の氏名と受験可否だけを返す（鍵不要）
-   GET               … 人事側。一覧を返す（鍵必要）
-   POST  {action:'start', token} … 受験開始の記録（鍵不要）
-   POST  {name, role, ...}       … 候補者の登録とURL発行（鍵必要）
-   PATCH {token, ...}            … 無効化・期限延長・案内送信済み（鍵必要）
-
-   ★ 重要 ★
-   応募者は「自分のトークン1件」しか引けない。
-   一覧を引くには鍵が要る。ここを混ぜると、
-   トークンを1つ持っている応募者が全員分を読めてしまう。
-   ============================================================ */
+// 応募者はトークン1件だけ。一覧は要ログイン（混ぜると全員分が読める）
 
 const auth = require('./_auth.js');
 const store = require('./_store.js');
@@ -25,8 +12,7 @@ function readBody(req) {
   return req.body || {};
 }
 
-/* 応募者に返してよい情報だけに絞る。
-   メールアドレスや人事メモ、他の候補者の存在は返さない。 */
+// 応募者向け。メール・人事メモ・他候補者の情報は返さない
 function publicView(c) {
   return {
     name: c.name,
@@ -49,7 +35,6 @@ module.exports = async function handler(req, res) {
     const body = readBody(req);
     const queryToken = (req.query && req.query.token) ? String(req.query.token) : '';
 
-    /* ---------- 応募者：自分のURLの状態を確認する ---------- */
     if (req.method === 'GET' && queryToken) {
       const c = await store.getCandidate(queryToken);
       if (!c) {
@@ -60,7 +45,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    /* ---------- 応募者：受験開始を記録する ---------- */
     if (req.method === 'POST' && body.action === 'start') {
       const token = String(body.token || '');
       const c = await store.getCandidate(token);
@@ -77,7 +61,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    /* ---------- ここから先は人事のみ ---------- */
+    // ここから人事のみ
 
     if (req.method === 'GET') {
       const me = await auth.requireRole(req, res, 'viewer');
@@ -88,7 +72,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      // 候補者の登録＝選考への招待。閲覧のみの担当者には行わせない。
+      // 登録＝招待なので viewer は不可
       const me = await auth.requireRole(req, res, 'reviewer');
       if (!me) return;
 

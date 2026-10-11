@@ -1,10 +1,3 @@
-/* ============================================================
-   コンテンツ編集（管理者のみ）
-   ------------------------------------------------------------
-   ここを人事の方が使えるようにするのが Stage 5 の目的。
-   制度が変わるたびに開発者へ依頼、という状態をなくす。
-   ============================================================ */
-
 const Editor = (() => {
   let data = { knowledge: [], questions: [], company: {}, video: {}, axes: [] };
   const $ = (id) => document.getElementById(id);
@@ -25,7 +18,6 @@ const Editor = (() => {
     $('saveBar').hidden = false;
   }
 
-  /* ---------- ナレッジ ---------- */
   function paintKnowledge() {
     $('kList').innerHTML = data.knowledge.map((k, i) => `
       <div class="edit-item" data-k="${i}">
@@ -62,7 +54,6 @@ const Editor = (() => {
     });
   }
 
-  /* ---------- 面接の質問 ---------- */
   function paintQuestions() {
     const axisOptions = (sel) => data.axes
       .map((a) => `<option value="${a.key}" ${sel === a.key ? 'selected' : ''}>${escapeHtml(a.label)}</option>`)
@@ -102,7 +93,6 @@ const Editor = (() => {
     });
   }
 
-  /* ---------- 会社情報・動画・評価軸 ---------- */
   function paintSettings() {
     $('cName').value = data.company.name || '';
     $('cTagline').value = data.company.tagline || '';
@@ -128,7 +118,7 @@ const Editor = (() => {
   function readSettings() {
     data.company = { name: $('cName').value.trim(), tagline: $('cTagline').value.trim() };
 
-    // 「1:15  タイトル  質問」の形で1行ずつ
+    // 1行「1:15  タイトル  質問」
     const chapters = $('vChapters').value.split('\n').map((line) => {
       const [time, title, ask] = line.split('\t');
       if (!time || !title) return null;
@@ -143,13 +133,12 @@ const Editor = (() => {
     };
 
     data.axes = Array.from($('axList').querySelectorAll('[data-ax]')).map((row, i) => ({
-      key: data.axes[i].key, // キーは固定
+      key: data.axes[i].key, // key は記録と紐づくので固定
       label: row.querySelector('[data-axf="label"]').value.trim(),
       desc: row.querySelector('[data-axf="desc"]').value.trim(),
     }));
   }
 
-  /* ---------- 保存 ---------- */
   async function save() {
     readKnowledge();
     readQuestions();
@@ -179,7 +168,6 @@ const Editor = (() => {
     paintSettings();
   }
 
-  /* ---------- 初期化 ---------- */
   async function init() {
     await Mode.ready();
     if (!Sessions.remote) { $('needsDb').hidden = false; $('main').hidden = true; return; }
@@ -196,8 +184,7 @@ const Editor = (() => {
       alert(err.message);
       return;
     }
-    /* 振り返り画面の「ナレッジに追加」から来た場合、
-       その質問を入れた空の項目を用意しておく。回答を書くだけで済むように。 */
+    // 振り返り画面の「ナレッジに追加」から来たら、質問入りの空項目を用意
     const pending = sessionStorage.getItem('faqai.newKnowledgeQuestion');
     if (pending) {
       sessionStorage.removeItem('faqai.newKnowledgeQuestion');
@@ -211,7 +198,6 @@ const Editor = (() => {
 
     paintAll();
 
-    // どこか触ったら保存バーを出す
     $('main').addEventListener('input', markDirty);
     $('main').addEventListener('change', markDirty);
 
@@ -255,7 +241,6 @@ const Editor = (() => {
       } catch (err) { alert(err.message); }
     });
 
-    // タブ切り替え
     document.querySelectorAll('[data-tab]').forEach((btn) => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('is-on', b === btn));

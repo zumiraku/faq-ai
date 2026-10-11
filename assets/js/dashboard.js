@@ -1,11 +1,4 @@
-/* ============================================================
-   人事ダッシュボード
-   ------------------------------------------------------------
-   この画面の役割は「AIの評価を確定させること」ではなく、
-   人事担当者が回答を読み、自分の判断で結論を出せるようにすること。
-   AIが書き込むのは scores / comment まで。
-   humanDecision に書き込めるのは、この画面の人間だけ。
-   ============================================================ */
+// AI が書くのは scores / comment まで。humanDecision はこの画面の人だけ
 
 const DECISIONS = {
   pass:   { label: '合格',   tone: 'ok',     icon: '✓' },
@@ -19,21 +12,15 @@ const Dashboard = (() => {
 
   const $ = (id) => document.getElementById(id);
 
-  /* ---------- 読み込み ----------
-     見本データは常に残す。
-     「記録が空のときだけ入れる」方式にしていたところ、
-     デモ中に1件でも面接を受けると見本が消え、
-     商談で見せたい候補者（鈴木さん）がいなくなってしまった。
-     実際に受けた面接は、見本データに追加される形にする。 */
+  // 見本データは常に残す（空のときだけ入れると、デモで1件受けた時点で見本が消える）
   async function load() {
     if (Sessions.remote) {
-      // 本番：サーバーの記録だけを見る。見本データは混ぜない。
+      // 本番は見本を混ぜない
       records = await Sessions.fetchAll();
       records.sort((a, b) => b.total - a.total);
       return;
     }
 
-    // デモ：端末内の記録に見本を重ねる
     const byId = new Map(SEED_SESSIONS.map((s) => [s.id, s]));
     for (const r of Sessions.all()) byId.set(r.id, r);
 
@@ -43,7 +30,7 @@ const Dashboard = (() => {
   }
 
   function persist() {
-    if (Sessions.remote) return; // 本番の保存はサーバー側
+    if (Sessions.remote) return;
     Store.set(CONFIG.KEY_SESSIONS, records);
   }
 
@@ -51,7 +38,6 @@ const Dashboard = (() => {
     return records.find((r) => r.id === selectedId) || null;
   }
 
-  /* ---------- 一覧 ---------- */
   function paintList() {
     $('count').textContent = `${records.length}名`;
 
@@ -84,10 +70,7 @@ const Dashboard = (() => {
     }).join('');
   }
 
-  /* ---------- スコアの内訳 ----------
-     4軸は「大きさの比較」なので単一色。軸の名前は棒の横に直接書くので、
-     色で軸を区別する必要はない。色は点数の低さ（注意して見るべきか）だけを表す。
-     ---------------------------------- */
+  // 棒は単一色。色は点数の低さだけを表す
   function severityOf(score) {
     if (score <= 2) return 'danger';
     if (score === 3) return 'warn';
@@ -111,7 +94,6 @@ const Dashboard = (() => {
     }).join('');
   }
 
-  /* ---------- 問答ログ ---------- */
   function paintTranscript(rec) {
     $('transcript').innerHTML = rec.answers.map((a, i) => `
       <li class="qa">
@@ -121,7 +103,6 @@ const Dashboard = (() => {
       </li>`).join('');
   }
 
-  /* ---------- 判断エリア ---------- */
   function paintDecision(rec) {
     const dec = rec.humanDecision ? DECISIONS[rec.humanDecision] : null;
 
@@ -136,7 +117,6 @@ const Dashboard = (() => {
     $('memo').value = rec.humanMemo || '';
   }
 
-  /* ---------- 詳細 ---------- */
   function paintDetail() {
     const rec = current();
     if (!rec) { $('empty').hidden = false; $('detail').hidden = true; return; }
@@ -170,12 +150,11 @@ const Dashboard = (() => {
     }
   }
 
-  /* ---------- 操作 ---------- */
   async function decide(value) {
     const rec = current();
     if (!rec) return;
 
-    // 同じボタンをもう一度押したら未判定に戻す（誤操作を取り消せるように）
+    // 同じボタン再押下で未判定に戻す
     const next = rec.humanDecision === value ? null : value;
     const before = rec.humanDecision;
 
@@ -186,20 +165,18 @@ const Dashboard = (() => {
 
     if (!Sessions.remote) return;
     try {
-      // サーバーが正とする値で上書きする（誰がいつ判断したかも記録される）
+      // サーバーの値で上書き
       const saved = await Sessions.decide(rec.id, next, rec.humanMemo || '');
       if (saved) Object.assign(rec, saved);
     } catch (err) {
-      rec.humanDecision = before; // 保存できなかったので画面も戻す
+      rec.humanDecision = before;
       paintList();
       paintDecision(rec);
       alert(`判断を保存できませんでした。\n${err.message}`);
     }
   }
 
-  /* ---------- 削除（Stage 4） ----------
-     応募者からの削除請求に応じるための操作。
-     論理削除ではなく完全に消す。取り消せないので確認を二重にする。 */
+  // 物理削除で取り消せないので確認は二重
   async function purge() {
     const rec = current();
     if (!rec) return;
@@ -230,26 +207,18 @@ const Dashboard = (() => {
     }
   }
 
-  /* ---------- 削除請求への対応 ----------
-     サーバー側の窓口（/api/privacy）は Stage 4 から在ったが、
-     届いた請求を人事が見る画面が無かった。
-     応募者には「担当者が確認のうえ対応いたします」と表示している以上、
-     受け取る側の画面が無いままでは、その約束が果たせない。
-
-     対応済みにすると、請求に含まれる氏名・連絡先はサーバー側で消去される。
-     消えたあとでは誰の請求か分からなくなるので、
-     「記録の削除 → 請求を閉じる」の順序を画面で明示する。 */
+  // 請求を閉じると氏名・連絡先が消えて誰の請求か分からなくなる。必ず「記録の削除 → 請求を閉じる」の順
   let requests = [];
 
   async function loadRequests() {
     if (!Sessions.remote) return;
     try {
       const res = await fetch(`${CONFIG.API_BASE}/privacy?requests=1`, { cache: 'no-store' });
-      if (!res.ok) return; // 権限が無い場合など。普段の画面を妨げない
+      if (!res.ok) return; // 権限なし等
       const data = await res.json();
       requests = (data.requests || []).filter((r) => r.status === 'open');
     } catch (_) {
-      requests = []; // 請求の取得に失敗しても、選考の作業は続けられるようにする
+      requests = [];
     }
   }
 
@@ -347,7 +316,6 @@ const Dashboard = (() => {
     paintDetail();
   }
 
-  /* ---------- 表示の切り替え ---------- */
   function paintSource() {
     const el = $('sourceNote');
     if (!el) return;
@@ -355,7 +323,6 @@ const Dashboard = (() => {
       el.innerHTML = '<span class="badge badge--ok">サーバー保存</span> '
         + '記録はデータベースに保存され、他の担当者の画面にも反映されます。';
       $('resetBtn').hidden = true;
-      // 候補者管理とコンテンツ編集は、データベースがある場合のみ意味を持つ
       ['candLink', 'contentLink', 'insightLink'].forEach((id) => {
         const link = $(id);
         if (link) link.hidden = false;
@@ -366,7 +333,6 @@ const Dashboard = (() => {
     }
   }
 
-  /* 権限に応じて操作を出し分ける（閲覧のみの担当者には押させない） */
   function paintPermissions() {
     const canDecide = Auth.can('reviewer');
     document.querySelectorAll('[data-decision]').forEach((b) => { b.disabled = !canDecide; });
@@ -380,11 +346,10 @@ const Dashboard = (() => {
     }
   }
 
-  /* ---------- 初期化 ---------- */
   async function init() {
-    await Mode.ready();      // 保存先がサーバーかどうか
-    await Content.load();    // 評価軸の表記を取り込む
-    await Auth.ensure();     // サーバー保存ならログインを求める
+    await Mode.ready();
+    await Content.load();
+    await Auth.ensure();
     Auth.paintWho();
 
     try {

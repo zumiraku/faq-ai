@@ -1,14 +1,4 @@
-/* ============================================================
-   /api/content — 編集できるコンテンツの取得と保存
-   ------------------------------------------------------------
-   GET             … 公開中の内容（誰でも可。画面が起動時に読む）
-   GET ?edit=1     … 下書きも含む内容（管理者）
-   PUT             … 保存（管理者）
-   POST {action:'seed'} … リポジトリの初期値を投入（管理者）
-
-   GET が公開なのは、ここにある内容がもともと
-   応募者に見せるもの（チャットの回答・面接の設問）だから。
-   ============================================================ */
+// GET は公開（もともと応募者に見せる内容なので）
 
 const content = require('./_content.js');
 const auth = require('./_auth.js');
@@ -25,13 +15,12 @@ module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   try {
-    /* ---------- 公開中の内容 ---------- */
     if (req.method === 'GET' && !(req.query && req.query.edit)) {
       res.status(200).json(await content.getAll());
       return;
     }
 
-    /* ---------- ここから管理者のみ ---------- */
+    // ここから管理者のみ
     if (!store.isEnabled()) {
       res.status(501).json({ error: '保存先が未設定です。編集にはデータベースが必要です。' });
       return;

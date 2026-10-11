@@ -118,7 +118,7 @@
 <script src="assets/js/app.js"></script>
 <script src="assets/js/content.js"></script>
 <script>
-/* 実際の設定を読み、書いてある内容と動作を一致させる */
+// 表示内容は実際の設定から作る（書いてあることと動作を一致させる）
 (async function () {
   const $ = (id) => document.getElementById(id);
   let remote = false;
@@ -146,7 +146,6 @@
     $('pAi').textContent = 'このページはデモのため、ご回答が外部のAIサービスへ送信されることはありません。';
   }
 
-  // デモではサーバーに保存されていないので、請求の受け口も出さない
   if (!remote) {
     $('delForm').hidden = true;
     $('delLocal').hidden = false;
